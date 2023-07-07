@@ -6,7 +6,7 @@ class PolyphonyExecuter:
         self.target = target + '.py'
         self.target_polyphony = target + '.polyphony.py'
         self.verilog_file = target + '.v'
-        self.command = 'polyphony' + ' -o ' + self.verilog_file + ' ' + self.target_polyphony
+        self.command = 'polyphony' + ' -o ' + self.verilog_file + ' -D ' + self.target_polyphony
         self.test_command = 'python3 ' + self.target
         self.verilog_command = 'iverilog -o ' + self.verilog_file + '.out ' + 'main.v' + ' ' + 'test.v'
     
@@ -16,3 +16,4 @@ class PolyphonyExecuter:
         os.system(self.verilog_command)
         print('command: ' + self.verilog_command)
         os.system('./' + self.verilog_file + '.out')
+        os.system('rm -r ./polyphony-numpy/build')

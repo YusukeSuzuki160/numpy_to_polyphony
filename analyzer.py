@@ -23,6 +23,8 @@ class MainArgNameLister(ast.NodeVisitor):
 class MainCallAnalyzer(ast.NodeVisitor):
     def __init__(self, arg_name_list):
         self.array_list = {}
+        self.float_list = {}
+        self.complex_list = {}
         self.main_args = arg_name_list
 
     def visit_Call(self, node):
@@ -50,13 +52,21 @@ class MainCallAnalyzer(ast.NodeVisitor):
                     append_dict['dtype'] = dtype
                     self.array_list[self.main_args[arg_name]] = append_dict
                     i += 1
+                elif isinstance(arg, ast.Num):
+                    if type(arg.n) == float:
+                        self.float_list[self.main_args['main_arg' + str(i)]] = 'fixed64'
+                    elif type(arg.n) == complex:
+                        self.complex_list[self.main_args['main_arg' + str(i)]] = 'complex128'
+                    i += 1
         self.generic_visit(node)
 
 
 
 class TypeAnalyzer(ast.NodeVisitor):
-    def __init__(self, arg_name_list):
+    def __init__(self, arg_name_list, float_list, complex_list):
         self.array_list = arg_name_list
+        self.float_list = float_list
+        self.complex_list = complex_list
         self.npinstance_list = {}
 
     def visit_Assign(self, node: Assign) -> Any:
@@ -97,8 +107,17 @@ class TypeAnalyzer(ast.NodeVisitor):
                                         dtype = node.value.keywords[0].value.attr
                                         append_dict['dtype'] = dtype
                                 self.npinstance_list[arg_name] = append_dict
+        elif isinstance(node.value, ast.Name):
+            if node.value.id in self.npinstance_list:
+                self.npinstance_list[node.targets[0].id] = self.npinstance_list[node.value.id]
+            elif node.value.id in self.float_list:
+                self.float_list[node.targets[0].id] = self.float_list[node.value.id]
+            elif node.value.id in self.complex_list:
+                self.complex_list[node.targets[0].id] = self.complex_list[node.value.id]
         elif isinstance(node.value, ast.BinOp):
             self.visit(node.value)
+            if node.value.left.id not in self.npinstance_list:
+                return
             left_type = self.npinstance_list[node.value.left.id]['dtype']
             right_type = self.npinstance_list[node.value.right.id]['dtype']
             assert left_type == right_type

@@ -3,9 +3,11 @@ import ast
 from typing import Any, Set
 
 class FunctionTranslator(ast.NodeTransformer):
-    def __init__(self, array_list, np_list, np_alias='np'):
+    def __init__(self, array_list, np_list, float_list, complex_list, np_alias='np'):
         self.array_list = array_list
         self.np_list = np_list
+        self.float_list = float_list
+        self.complex_list = complex_list
         self.np_alias = np_alias
         self.func_dict = {}
     
@@ -20,6 +22,8 @@ class FunctionTranslator(ast.NodeTransformer):
                         function_name = node.func.attr + '_' + str(length) + '_' + self.array_list[node.args[0].id]['dtype']
                         return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[]), node)
         elif isinstance(node.func, ast.Name) and node.func.id == 'print': # print => np.print
+            if node.args[0].id not in self.np_list.keys():
+                return node
             shape = self.np_list[node.args[0].id]['shape']
             dtype = self.np_list[node.args[0].id]['dtype']
             self.func_dict['print'] = {'shape': shape, 'dtype': dtype}
@@ -31,6 +35,11 @@ class FunctionTranslator(ast.NodeTransformer):
     def visit_BinOp(self, node: ast.BinOp) -> Any:
         left = node.left
         right = node.right
+        if left.id not in self.np_list.keys() or right.id not in self.np_list.keys():
+            if left.id in self.float_list.keys() and right.id in self.float_list.keys():
+                return self.flaot_to_int(node)
+            elif left.id in self.complex_list.keys() and right.id in self.complex_list.keys():
+                return self.complex_to_int(node)
         if isinstance(left, ast.Name) and isinstance(right, ast.Name):
             left_shape = self.np_list[left.id]['shape']
             right_shape = self.np_list[right.id]['shape']
@@ -50,3 +59,17 @@ class FunctionTranslator(ast.NodeTransformer):
             shapes = '_' + 'l' + str(left_shape[0]) + '_' + str(left_shape[1]) + '_' + 'r' + str(right_shape[0]) + '_' + str(right_shape[1])
             function_name = function_name + shapes + '_' + dtype
             return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=args, keywords=[]), node)
+        
+    def flaot_to_int(self, node: ast.BinOp) -> Any:
+        function_name = ''
+        dtype = self.float_list[node.left.id]
+        if isinstance(node.op, ast.Add):
+            function_name = dtype + '_add'
+        elif isinstance(node.op, ast.Sub):
+            function_name = dtype + '_sub'
+        elif isinstance(node.op, ast.Mult):
+            function_name = dtype + '_mult'
+
+        if function_name != '':
+            self.func_dict[function_name] = {'dtype': dtype}
+            return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=[node.left, node.right], keywords=[]), node)

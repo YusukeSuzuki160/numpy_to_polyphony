@@ -1,4 +1,5 @@
 import os
+import re
 
 class NpLibGenerator: # run at the super directory of polyphony-numpy
     def __init__(self, func_dict):
@@ -7,7 +8,7 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         self.func_list = []
         self.code = ''
         self.lib_name = '_numpy.py'
-        self.lib_path = 'polyphony-numpy/build/lib/polyphony/_internal/'
+        self.lib_path = 'polyphony-numpy/polyphony/_internal/'
         self.exec_command = 'pip install polyphony-numpy/'
 
     def generate(self):
@@ -21,8 +22,9 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
                 self.generate_matmult(func)
             elif func_name == 'print':
                 self.generate_print(func)
-            else:
-                self.generate_func(func_name, func)
+            elif re.search('fixed', func_name):
+                func_type = func_name.split('_')[1]
+                self.generate_fixed(func, func_type)
         self.code = self.code[:-3]
         with open(self.lib_path + self.lib_name, 'w') as f:
             f.write(self.code)
@@ -111,6 +113,13 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
             func_str += '\tprint(a_' + str(i) + ')\n'
         self.func_list.append(func_str)
         self.code += func_str + '\n\n\n'
-    
-    def generate_func(self, func_name, func):
-        pass
+
+    def generate_fixed(self, func, func_type):
+        type = func['dtype']
+        if func_type == 'add':
+            func_str = self.fixed_add(type)
+
+    def fixed_add(self, type):
+        if type == 'fixed64':
+            self.code += 'def fixed64_add(a: int64, b: int64) -> int64:\n\
+    return a + b\n\n\n'

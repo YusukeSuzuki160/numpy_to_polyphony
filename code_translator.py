@@ -16,12 +16,13 @@ class CodeTranslator(ast.NodeTransformer):
         self.main_call_analyzer = MainCallAnalyzer(self.arg_name_list)
         self.main_call_analyzer.visit(self.tree)
         self.array_list = self.main_call_analyzer.array_list
-        self.type_analyzer = TypeAnalyzer(self.array_list)
+        self.float_list = self.main_call_analyzer.float_list
+        self.complex_list = self.main_call_analyzer.complex_list
+        self.type_analyzer = TypeAnalyzer(self.array_list, self.float_list, self.complex_list)
         self.type_analyzer.visit(self.tree)
-        self.function_translator = FunctionTranslator(self.array_list, self.type_analyzer.npinstance_list, self.npalias)
+        self.function_translator = FunctionTranslator(self.array_list, self.type_analyzer.npinstance_list, self.type_analyzer.float_list, self.type_analyzer.complex_list, self.npalias)
         self.function_translator.visit(self.tree)
         self.npinstance_list = self.type_analyzer.npinstance_list
-        print(self.npinstance_list)
 
     def get_npinstance_list(self):
         return self.npinstance_list
@@ -49,6 +50,12 @@ class CodeTranslator(ast.NodeTransformer):
     
     def get_func_dict(self):
         return self.function_translator.func_dict
+    
+    def get_float_list(self):
+        return self.type_analyzer.float_list
+    
+    def get_complex_list(self):
+        return self.type_analyzer.complex_list
 
     def flatten_list(self, list_name):
         list_type = self.array_list[list_name]
