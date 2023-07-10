@@ -13,7 +13,6 @@ def main():
     translator.visit(translator.get_tree())
     tree = translator.get_tree()
     LastTranslator(translator.get_array_list(), translator.get_float_list(), translator.get_complex_list(), translator.get_npinstance_list()).visit(tree)
-    # print(astor.dump_tree(tree))
     source = astor.to_source(tree)
     if not 'from polyphony import numpy' in source:
         source = 'from polyphony import numpy as np\n' + source
@@ -22,7 +21,7 @@ def main():
     output_file = filename + '.polyphony.py'
     with open(output_file, 'w') as f:
         f.write(source)
-    NpLibGenerator(translator.get_func_dict()).generate()
+    # NpLibGenerator(translator.get_func_dict()).generate()
     PolyphonyExecuter(filename).execute()
 
 if __name__ == '__main__':

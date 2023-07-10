@@ -81,36 +81,7 @@ class CodeTranslator(ast.NodeTransformer):
         for i in range(length):
             array_names.append(array_name + '_' + str(i))
         return array_names
-    def visit_Name(self, node: Name) -> Any:
-        if node.id in self.array_list.keys():
-            array_type = self.array_list[node.id]
-            shape = array_type['shape']
-            length = shape[0] * shape[1]
-            dtype = array_type['dtype']
-            if dtype == 'complex128':
-                elts = []
-                for i in range(length):
-                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_real', ctx=ast.Load()))
-                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_imag', ctx=ast.Load()))
-            else:
-                elts = [ast.Name(id=node.id + '_' + str(i), ctx=ast.Load()) for i in range(length)]
-            return ast.copy_location(ast.Tuple(elts=elts, ctx=ast.Load()), node)
-        elif node.id in self.npinstance_list.keys():
-            npinstance_type = self.npinstance_list[node.id]
-            shape = npinstance_type['shape']
-            length = shape[0] * shape[1]
-            dtype = npinstance_type['dtype']
-            if dtype == 'complex128':
-                elts = []
-                for i in range(length):
-                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_real', ctx=ast.Load()))
-                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_imag', ctx=ast.Load()))
-            else:
-                elts = [ast.Name(id=node.id + '_' + str(i), ctx=ast.Load()) for i in range(length)]
-            return ast.copy_location(ast.Tuple(elts=elts, ctx=ast.Load()), node)
-        elif node.id in self.complex_list.keys():
-            return ast.copy_location(ast.Tuple(elts=[ast.Name(id=node.id + '_real', ctx=ast.Load()), ast.Name(id=node.id + '_imag', ctx=ast.Load())], ctx=ast.Load()), node)
-        return node
+
     def visit_Call(self, node: ast.Call) -> Any:
         args = []
         for arg in node.args:
@@ -127,35 +98,6 @@ class CodeTranslator(ast.NodeTransformer):
         node.args = ret_args
         self.generic_visit(node)
         return node
-            
-    
-    def visit_FunctionDef(self, node: FunctionDef) -> Any:
-        args = []
-        for arg in node.args.args:
-            args.append(arg.arg)
-        ret_args = []
-        ret_args_non_complex = []
-        for arg in args:
-            if arg in self.array_list.keys():
-                ret_args.extend(self.flatten_list(arg))
-            elif arg in self.npinstance_list.keys():
-                ret_args.extend(self.flatten_array(arg))
-            else:
-                ret_args.append(arg)
-        for arg in ret_args:
-            if arg in self.complex_list.keys():
-                ret_args_non_complex.extend([arg + '_real', arg + '_imag'])
-            else:
-                ret_args_non_complex.append(arg)
-        node.args.args = [ast.arg(arg=arg, annotation=None) for arg in ret_args_non_complex]
-        self.generic_visit(node)
-        return node
-
-    def visit_NumpyArray(self, node: ast.Call) -> Any:
-        if isinstance(node.args[0], ast.List):
-            return ast.copy_location(ast.Tuple(elts=[self.visit(elt) for elt in node.args], ctx=ast.Load()), node)
-        elif isinstance(node.args[0], ast.Name):
-            return ast.copy_location(ast.Tuple(elts=[self.visit(elt) for elt in node.args], ctx=ast.Load()), node)
     
         
     def visit_List(self, node: List) -> Any:

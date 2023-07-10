@@ -1,4 +1,4 @@
-from _ast import Call
+from _ast import Assign, Call
 import ast, astor
 from typing import Any, Set
 
@@ -16,29 +16,7 @@ class FunctionTranslator(ast.NodeTransformer):
             if isinstance(node.func.value, ast.Name) and node.func.value.id == 'np':
                 if node.func.attr == 'array':
                     if isinstance(node.args[0], ast.Name):
-                        if node.args[0].id in self.array_list.keys():
-                            shape = self.array_list[node.args[0].id]['shape']
-                            length = shape[0] * shape[1]
-                            dtype = self.array_list[node.args[0].id]['dtype']
-                            self.func_dict[node.func.attr] = {'shape': shape, 'dtype': dtype}
-                            function_name = node.func.attr + '_' + str(length) + '_' + self.array_list[node.args[0].id]['dtype']
-                            return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[]), node)
-                elif node.func.attr == 'array_equal':
-                    left = node.args[0]
-                    right = node.args[1]
-                    if isinstance(left, ast.Name) and isinstance(right, ast.Name):
-                        if left.id in self.array_list.keys() and right.id in self.array_list.keys():
-                            shape = self.array_list[left.id]['shape']
-                            length = shape[0] * shape[1]
-                            self.func_dict[node.func.attr] = {'shape': shape, 'dtype': self.array_list[left.id]['dtype']}
-                            function_name = node.func.attr + '_' + str(length) + '_' + self.array_list[left.id]['dtype']
-                            return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[]), node)
-                        elif left.id in self.np_list.keys() and right.id in self.np_list.keys():
-                            shape = self.np_list[left.id]['shape']
-                            length = shape[0] * shape[1]
-                            self.func_dict[node.func.attr] = {'shape': shape, 'dtype': self.np_list[left.id]['dtype']}
-                            function_name = node.func.attr + '_' + str(length) + '_' + self.np_list[left.id]['dtype']
-                            return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[]), node)
+                        return node.args[0]
             elif isinstance(node.func.value, ast.Attribute) and node.func.value.value.id == 'np':
                 if node.func.attr == 'fft':
                     if isinstance(node.args[0], ast.Name):
@@ -55,17 +33,7 @@ class FunctionTranslator(ast.NodeTransformer):
                             return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[]), node)
                         
         elif isinstance(node.func, ast.Name) and node.func.id == 'print': # print => np.print
-            if node.args[0].id not in self.np_list.keys():
-                if node.args[0].id in self.complex_list.keys():
-                    dtype = self.complex_list[node.args[0].id]
-                    function_name = '_print_' + dtype
-                    self.func_dict[function_name] = {'dtype': dtype}
-                    return ast.Call(func=ast.Attribute(value=ast.Name(id='np', ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[], starargs=None, kwargs=None)
-            shape = self.np_list[node.args[0].id]['shape']
-            dtype = self.np_list[node.args[0].id]['dtype']
-            function_name = '_print_' + str(shape[0] * shape[1]) + '_' + dtype
-            self.func_dict[function_name] = {'shape': shape, 'dtype': dtype}
-            return ast.Call(func=ast.Attribute(value=ast.Name(id='np', ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[], starargs=None, kwargs=None)
+            return ast.Call(func=ast.Attribute(value=ast.Name(id='np', ctx=ast.Load()), attr='_print', ctx=ast.Load()), args=node.args, keywords=[], starargs=None, kwargs=None)
         else:
             return node
                     
@@ -94,10 +62,17 @@ class FunctionTranslator(ast.NodeTransformer):
         elif isinstance(node.op, ast.MatMult):
             function_name = 'matmult'
         if function_name != '':
-            self.func_dict[function_name] = {'shape1': left_shape, 'shape2': right_shape, 'dtype': dtype}
-            shapes = '_' + 'l' + str(left_shape[0]) + '_' + str(left_shape[1]) + '_' + 'r' + str(right_shape[0]) + '_' + str(right_shape[1])
-            function_name = function_name + shapes + '_' + dtype
             return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=args, keywords=[]), node)
+    
+    def visit_Assign(self, node: Assign) -> Any:
+        node_name = node.targets[0].id
+        if isinstance(node.value, ast.BinOp):
+            node = self.visit_BinOp(node.value)
+            node.args.append(ast.Name(id=node_name, ctx=ast.Load()))
+            return ast.Expr(value=node)
+        else:
+            self.generic_visit(node)
+            return node
         
     def flaot_to_int(self, node: ast.BinOp) -> Any:
         function_name = ''
