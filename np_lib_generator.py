@@ -46,6 +46,10 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         shape = func['shape']
         length = shape[0] * shape[1]
         dtype = func['dtype']
+        function_name = 'array' + '_' + str(length) + '_' + dtype
+        if dtype == 'complex128':
+            dtype = 'int64'
+            length *= 2
         for i in range(length):
             arg_list += 'a_' + str(i) + ', '
         return_stm = 'return ' + arg_list
@@ -53,7 +57,6 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         for i in range(length):
             return_type += dtype + ', '
         return_type = return_type[:-2] + ']'
-        function_name = 'array' + '_' + str(length) + '_' + dtype
         func_str = 'def ' + function_name + '(' + arg_list + ') -> ' + return_type + ':\n'
         func_str += '\t' + return_stm
         self.func_list.append(function_name)
@@ -65,24 +68,53 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         length = shape[0] * shape[1]
         dtype = func['dtype']
         for i in range(length):
-            arg_list += 'a_' + str(i) + ', '
-        return_stm = 'return ' + arg_list
+            arg_list += 'a_real_' + str(i) + ': int64, '
+            arg_list += 'a_imag_' + str(i) + ': int64, '
+        return_list = ''
+        for i in range(length):
+            return_list += 't_real_' + str(i) + ', '
+            return_list += 't_imag_' + str(i) + ', '
+        return_stm = 'return ' + return_list
         return_type = 'Tuple['
         for i in range(length):
-            return_type += dtype + ', '
+            return_type += 'int64' + ', '
+            return_type += 'int64' + ', '
         return_type = return_type[:-2] + ']'
-        function_name = 'fft' + '_' + str(length) + '_' + dtype
+        function_name = 'fft' + '_' + str(shape[0]) + '_' + str(shape[1]) + '_' + dtype
         func_str = 'def ' + function_name + '(' + arg_list + ') -> ' + return_type + ':\n'
-        w_real = []
-        w_imag = []
-        for i in range(length):
-            w_real.append(self.fixed_to_int(math.cos(2 * math.pi * i / length)))
-            w_imag.append(self.fixed_to_int(math.sin(2 * math.pi * i / length)))
         stage = int(math.log(shape[1], 2))
         dataset_num = shape[0]
+        w_real = []
+        w_imag = []
+        bit_rev = self.bit_reverse(stage)
+        for i in range(shape[1]):
+            w_real.append(self.fixed_to_int(math.cos(2 * math.pi * i / shape[1])))
+            w_imag.append(self.fixed_to_int(math.sin(2 * math.pi * i / shape[1])))
+        for i in range(dataset_num):
+            for j in range(stage):
+                for k in range(0, shape[1], 2):
+                    if j == 0:
+                        func_str += '\tt_real_' + str(i * shape[1] + k) + ', t_imag_' + str(i * shape[1] + k) + ' = complex128_add(a_real_' + str(i * shape[1] + bit_rev[k]) + ', a_imag_' + str(i * shape[1] + bit_rev[k]) + ', a_real_' + str(i * shape[1] + bit_rev[k + 1]) + ', a_imag_' + str(i * shape[1] + bit_rev[k + 1]) + ')\n'
+                        func_str += '\tt_real_' + str(i * shape[1] + k + 1) + ', t_imag_' + str(i * shape[1] + k + 1) + ' = complex128_sub(a_real_' + str(i * shape[1] + bit_rev[k]) + ', a_imag_' + str(i * shape[1] + bit_rev[k]) + ', a_real_' + str(i * shape[1] + bit_rev[k + 1]) + ', a_imag_' + str(i * shape[1] + bit_rev[k + 1]) + ')\n'
+                    else:
+                        func_str += '\tw_real, w_imag = complex128_mult(t_real_' + str(i * shape[1] + k + 1) + ', t_imag_' + str(i * shape[1] + k + 1) + ', ' + str(w_real[(k * (2 ** (j - 1))) % shape[1]]) + ', ' + str(w_imag[(k * (2 ** (j - 1))) % shape[1]]) + ')\n'
+                        func_str += '\tt_real_' + str(i * shape[1] + k) + ', t_imag_' + str(i * shape[1] + k) + ' = complex128_add(t_real_' + str(i * shape[1] + bit_rev[k]) + ', t_imag_' + str(i * shape[1] + bit_rev[k]) + ', w_real, w_imag)\n'
+                        func_str += '\tt_real_' + str(i * shape[1] + k + 1) + ', t_imag_' + str(i * shape[1] + k + 1) + ' = complex128_sub(t_real_' + str(i * shape[1] + bit_rev[k]) + ', t_imag_' + str(i * shape[1] + bit_rev[k]) + ', w_real, w_imag)\n'
         func_str += '\t' + return_stm
         self.func_list.append(function_name)
         self.code += func_str + '\n\n\n'
+        if 'complex128_add' not in self.func_list:
+            self.complex_add('complex128')
+        if 'complex128_sub' not in self.func_list:
+            self.complex_sub('complex128')
+        if 'complex128_mul' not in self.func_list:
+            self.complex_mul('complex128')
+
+    def bit_reverse(self, bit_num):
+        revs = []
+        for i in range(2 ** bit_num):
+            revs.append(int(bin(i)[2:].zfill(bit_num)[::-1], 2))
+        return revs
 
     def generate_array_equal(self, func):
         arg_list = ''
@@ -159,9 +191,12 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
             shape = func['shape']
             length = shape[0] * shape[1]
             dtype = func['dtype']
-            for i in range(length):
-                arg_list += 'a_' + str(i) + ', '
             func_name = '_print' + '_' + str(length) + '_' + dtype
+            if dtype == 'complex128':
+                dtype = 'int64'
+                length *= 2
+            for i in range(length):
+                arg_list += 'a_' + str(i) + ': ' + dtype + ', '
             func_str = 'def ' + func_name + '(' + arg_list + ') -> None:\n'
             for i in range(length):
                 func_str += '\tprint(a_' + str(i) + ')\n'

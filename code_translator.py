@@ -27,6 +27,7 @@ class CodeTranslator(ast.NodeTransformer):
         self.function_analyzer.visit(self.tree)
         self.function_call_analyzer = FunctionCallAnalyzer(self.function_analyzer.array_list, self.function_analyzer.float_list, self.function_analyzer.complex_list, self.function_analyzer.np_list, self.function_analyzer.func_return)
         self.function_call_analyzer.visit(self.tree)
+        print(self.function_call_analyzer.complex_list)
         self.function_translator = FunctionTranslator(self.array_list, self.function_call_analyzer.np_list, self.function_call_analyzer.float_list, self.function_call_analyzer.complex_list, self.npalias)
         self.function_translator.visit(self.tree)
         self.npinstance_list = self.function_analyzer.np_list
@@ -85,12 +86,28 @@ class CodeTranslator(ast.NodeTransformer):
             array_type = self.array_list[node.id]
             shape = array_type['shape']
             length = shape[0] * shape[1]
-            return ast.copy_location(ast.Tuple(elts=[ast.Name(id=node.id + '_' + str(i), ctx=ast.Load()) for i in range(length)], ctx=ast.Load()), node)
+            dtype = array_type['dtype']
+            if dtype == 'complex128':
+                elts = []
+                for i in range(length):
+                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_real', ctx=ast.Load()))
+                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_imag', ctx=ast.Load()))
+            else:
+                elts = [ast.Name(id=node.id + '_' + str(i), ctx=ast.Load()) for i in range(length)]
+            return ast.copy_location(ast.Tuple(elts=elts, ctx=ast.Load()), node)
         elif node.id in self.npinstance_list.keys():
             npinstance_type = self.npinstance_list[node.id]
             shape = npinstance_type['shape']
             length = shape[0] * shape[1]
-            return ast.copy_location(ast.Tuple(elts=[ast.Name(id=node.id + '_' + str(i), ctx=ast.Load()) for i in range(length)], ctx=ast.Load()), node)
+            dtype = npinstance_type['dtype']
+            if dtype == 'complex128':
+                elts = []
+                for i in range(length):
+                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_real', ctx=ast.Load()))
+                    elts.append(ast.Name(id=node.id + '_' + str(i) + '_imag', ctx=ast.Load()))
+            else:
+                elts = [ast.Name(id=node.id + '_' + str(i), ctx=ast.Load()) for i in range(length)]
+            return ast.copy_location(ast.Tuple(elts=elts, ctx=ast.Load()), node)
         elif node.id in self.complex_list.keys():
             return ast.copy_location(ast.Tuple(elts=[ast.Name(id=node.id + '_real', ctx=ast.Load()), ast.Name(id=node.id + '_imag', ctx=ast.Load())], ctx=ast.Load()), node)
         return node
@@ -117,6 +134,7 @@ class CodeTranslator(ast.NodeTransformer):
         for arg in node.args.args:
             args.append(arg.arg)
         ret_args = []
+        ret_args_non_complex = []
         for arg in args:
             if arg in self.array_list.keys():
                 ret_args.extend(self.flatten_list(arg))
@@ -124,7 +142,12 @@ class CodeTranslator(ast.NodeTransformer):
                 ret_args.extend(self.flatten_array(arg))
             else:
                 ret_args.append(arg)
-        node.args.args = [ast.arg(arg=arg, annotation=None) for arg in ret_args]
+        for arg in ret_args:
+            if arg in self.complex_list.keys():
+                ret_args_non_complex.extend([arg + '_real', arg + '_imag'])
+            else:
+                ret_args_non_complex.append(arg)
+        node.args.args = [ast.arg(arg=arg, annotation=None) for arg in ret_args_non_complex]
         self.generic_visit(node)
         return node
 

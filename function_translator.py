@@ -19,7 +19,8 @@ class FunctionTranslator(ast.NodeTransformer):
                         if node.args[0].id in self.array_list.keys():
                             shape = self.array_list[node.args[0].id]['shape']
                             length = shape[0] * shape[1]
-                            self.func_dict[node.func.attr] = {'shape': shape, 'dtype': self.array_list[node.args[0].id]['dtype']}
+                            dtype = self.array_list[node.args[0].id]['dtype']
+                            self.func_dict[node.func.attr] = {'shape': shape, 'dtype': dtype}
                             function_name = node.func.attr + '_' + str(length) + '_' + self.array_list[node.args[0].id]['dtype']
                             return ast.copy_location(ast.Call(func=ast.Attribute(value=ast.Name(id=self.np_alias, ctx=ast.Load()), attr=function_name, ctx=ast.Load()), args=node.args, keywords=[]), node)
                 elif node.func.attr == 'array_equal':

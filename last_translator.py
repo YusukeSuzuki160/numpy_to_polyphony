@@ -32,6 +32,8 @@ class LastTranslator(ast.NodeTransformer):
             arg_name = arg.arg
             if arg_name.split('_')[0] in self.array_list.keys():
                 dtype = self.array_list[arg_name.split('_')[0]]['dtype']
+                if dtype == 'complex128':
+                    dtype = 'int64'
                 new_args.append(ast.arg(arg=arg_name, annotation=ast.Name(id=dtype, ctx=ast.Load())))
             elif arg_name in self.float_list.keys():
                 bit = self.float_list[arg_name].split('fixed')[1]

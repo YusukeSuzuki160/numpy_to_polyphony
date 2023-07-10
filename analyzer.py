@@ -35,23 +35,37 @@ class MainCallAnalyzer(ast.NodeVisitor):
                 if isinstance(arg, ast.List):
                     arg_name = node.func.id + '_arg' + str(i)
                     append_dict = {}
-                    append_dict['shape'] = get_shape_from_list(arg)
+                    shape = get_shape_from_list(arg)
+                    if len(shape) == 1:
+                        shape = [1] + shape
+                    append_dict['shape'] = shape
                     element = arg.elts[0]
                     while isinstance(element, ast.List):
                         element = element.elts[0]
-                    dtype = type(element.n)
-                    if dtype == int:
-                        dtype = 'int64'
-                    elif dtype == float:
-                        dtype = 'float64'
-                    elif dtype == bool:
-                        dtype = 'bool'
-                    elif dtype == complex:
+                    if isinstance(element, Complex):
                         dtype = 'complex128'
                     else:
-                        dtype = 'object'
+                        dtype = type(element.n)
+                        if dtype == int:
+                            dtype = 'int64'
+                        elif dtype == float:
+                            dtype = 'float64'
+                        elif dtype == bool:
+                            dtype = 'bool'
+                        elif dtype == complex:
+                            dtype = 'complex128'
+                        else:
+                            dtype = 'object'
                     append_dict['dtype'] = dtype
                     self.array_list[self.main_args[arg_name]] = append_dict
+                    if dtype == 'float64':
+                        length = shape[0] * shape[1]
+                        for j in range(length):
+                            self.float_list[self.main_args[arg_name] + '_' + str(j)] = 'fixed64'
+                    elif dtype == 'complex128':
+                        length = shape[0] * shape[1]
+                        for j in range(length):
+                            self.complex_list[self.main_args[arg_name] + '_' + str(j)] = 'complex128'
                     i += 1
                 elif isinstance(arg, ast.Num):
                     if type(arg.n) == float:
@@ -88,6 +102,14 @@ class MainCallAnalyzer(ast.NodeVisitor):
                     dtype = 'object'
             append_dict['dtype'] = dtype
             self.array_list[arg_name] = append_dict
+            if dtype == 'float64':
+                length = shape[0] * shape[1]
+                for j in range(length):
+                    self.float_list[self.main_args[arg_name] + '_' + str(j)] = 'fixed64'
+            elif dtype == 'complex128':
+                length = shape[0] * shape[1]
+                for j in range(length):
+                    self.complex_list[self.main_args[arg_name] + '_' + str(j)] = 'complex128'
         self.generic_visit(node)
 
 
@@ -131,15 +153,28 @@ class TypeAnalyzer(ast.NodeVisitor):
                                         dtype = node.value.keywords[0].value.value.id
                                 append_dict['dtype'] = dtype
                                 self.npinstance_list[arg_name] = append_dict
+                                if dtype == 'float64':
+                                    length = shape[0] * shape[1]
+                                    for j in range(length):
+                                        self.float_list[arg_name + '_' + str(j)] = 'fixed64'
+                                elif dtype == 'complex128':
+                                    length = shape[0] * shape[1]
+                                    for j in range(length):
+                                        self.complex_list[arg_name + '_' + str(j)] = 'complex128'
                             if isinstance(node.value.args[0], ast.Name):
                                 arg_name = node.targets[0].id
                                 append_dict = {}
                                 append_dict = self.array_list[node.value.args[0].id]
+                                dtype = append_dict['dtype']
                                 if node.value.keywords != []:
                                     if node.value.keywords[0].arg == 'dtype':
                                         dtype = node.value.keywords[0].value.attr
                                         append_dict['dtype'] = dtype
                                 self.npinstance_list[arg_name] = append_dict
+                                shape = append_dict['shape']
+                                length = shape[0] * shape[1]
+                                for j in range(length):
+                                    self.complex_list[arg_name + '_' + str(j)] = 'complex128'
                 elif node.value.func.attr == 'fft':
                     if isinstance(node.value.func.value.value, ast.Name):
                         if node.value.func.value.value.id == 'np':
@@ -148,6 +183,10 @@ class TypeAnalyzer(ast.NodeVisitor):
                                 append_dict = {}
                                 append_dict = self.npinstance_list[node.value.args[0].id]
                                 append_dict['dtype'] = 'complex128'
+                                shape = append_dict['shape']
+                                length = shape[0] * shape[1]
+                                for j in range(length):
+                                    self.complex_list[arg_name + '_' + str(j)] = 'complex128'
                                 self.npinstance_list[arg_name] = append_dict
                 
         elif isinstance(node.value, ast.Name):
