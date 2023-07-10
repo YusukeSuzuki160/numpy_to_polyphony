@@ -2,14 +2,17 @@ from _ast import FunctionDef, List, Name
 import ast, astor
 from typing import Any
 import analyzer
-from analyzer import MainArgNameLister, MainCallAnalyzer, TypeAnalyzer
+from analyzer import MainArgNameLister, MainCallAnalyzer, TypeAnalyzer, FunctionAnalyzer, FunctionCallAnalyzer
 from function_translator import FunctionTranslator
+from parse_complex import Complex, ComplexNumGenerator
 
 class CodeTranslator(ast.NodeTransformer):
     def __init__(self, code):
         self.npalias = 'np'
         self.code = code
         self.tree = ast.parse(code)
+        self.complex_parser = ComplexNumGenerator()
+        self.complex_parser.visit(self.tree)
         self.lister = MainArgNameLister()
         self.lister.visit(self.tree)
         self.arg_name_list = self.lister.arg_name_list
@@ -20,9 +23,13 @@ class CodeTranslator(ast.NodeTransformer):
         self.complex_list = self.main_call_analyzer.complex_list
         self.type_analyzer = TypeAnalyzer(self.array_list, self.float_list, self.complex_list)
         self.type_analyzer.visit(self.tree)
-        self.function_translator = FunctionTranslator(self.array_list, self.type_analyzer.npinstance_list, self.type_analyzer.float_list, self.type_analyzer.complex_list, self.npalias)
+        self.function_analyzer = FunctionAnalyzer(self.array_list, self.type_analyzer.float_list, self.type_analyzer.complex_list, self.type_analyzer.npinstance_list)
+        self.function_analyzer.visit(self.tree)
+        self.function_call_analyzer = FunctionCallAnalyzer(self.function_analyzer.array_list, self.function_analyzer.float_list, self.function_analyzer.complex_list, self.function_analyzer.np_list, self.function_analyzer.func_return)
+        self.function_call_analyzer.visit(self.tree)
+        self.function_translator = FunctionTranslator(self.array_list, self.function_call_analyzer.np_list, self.function_call_analyzer.float_list, self.function_call_analyzer.complex_list, self.npalias)
         self.function_translator.visit(self.tree)
-        self.npinstance_list = self.type_analyzer.npinstance_list
+        self.npinstance_list = self.function_analyzer.np_list
 
     def get_npinstance_list(self):
         return self.npinstance_list
@@ -84,6 +91,8 @@ class CodeTranslator(ast.NodeTransformer):
             shape = npinstance_type['shape']
             length = shape[0] * shape[1]
             return ast.copy_location(ast.Tuple(elts=[ast.Name(id=node.id + '_' + str(i), ctx=ast.Load()) for i in range(length)], ctx=ast.Load()), node)
+        elif node.id in self.complex_list.keys():
+            return ast.copy_location(ast.Tuple(elts=[ast.Name(id=node.id + '_real', ctx=ast.Load()), ast.Name(id=node.id + '_imag', ctx=ast.Load())], ctx=ast.Load()), node)
         return node
     def visit_Call(self, node: ast.Call) -> Any:
         args = []
@@ -94,6 +103,8 @@ class CodeTranslator(ast.NodeTransformer):
             if isinstance(arg, ast.Tuple):
                 for elt in arg.elts:
                     ret_args.append(elt)
+            elif isinstance(arg, Complex):
+                ret_args.extend([arg.real, arg.imag])
             else:
                 ret_args.append(arg)
         node.args = ret_args
@@ -109,6 +120,8 @@ class CodeTranslator(ast.NodeTransformer):
         for arg in args:
             if arg in self.array_list.keys():
                 ret_args.extend(self.flatten_list(arg))
+            elif arg in self.npinstance_list.keys():
+                ret_args.extend(self.flatten_array(arg))
             else:
                 ret_args.append(arg)
         node.args.args = [ast.arg(arg=arg, annotation=None) for arg in ret_args]
@@ -131,6 +144,8 @@ class CodeTranslator(ast.NodeTransformer):
             if isinstance(arg, ast.Tuple):
                 for elt in arg.elts:
                     ret_args.append(elt)
+            elif isinstance(arg, Complex):
+                ret_args.extend([arg.real, arg.imag])
             else:
                 ret_args.append(arg)
         return ast.copy_location(ast.Tuple(elts=ret_args, ctx=ast.Load()), node)

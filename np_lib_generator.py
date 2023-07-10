@@ -1,5 +1,6 @@
 import os
 import re
+import math
 
 class NpLibGenerator: # run at the super directory of polyphony-numpy
     def __init__(self, func_dict):
@@ -10,6 +11,7 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         self.lib_name = '_numpy.py'
         self.lib_path = 'polyphony-numpy/polyphony/_internal/'
         self.exec_command = 'pip install polyphony-numpy/'
+        self.precision = 16
 
     def generate(self):
         self.generate_import()
@@ -18,14 +20,20 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
                 continue
             elif func_name == 'array':
                 self.generate_array(func)
+            elif func_name == 'fft':
+                self.generate_fft(func)
+            elif func_name == 'array_equal':
+                self.generate_array_equal(func)
             elif func_name == 'matmult':
                 self.generate_matmult(func)
-            elif func_name == 'print':
+            elif 'print' in func_name:
                 self.generate_print(func)
             elif re.search('fixed', func_name):
                 func_type = func_name.split('_')[1]
                 self.generate_fixed(func, func_type)
-        self.code = self.code[:-3]
+            elif re.search('complex', func_name):
+                func_type = func_name.split('_')[1]
+                self.generate_complex(func, func_type)
         with open(self.lib_path + self.lib_name, 'w') as f:
             f.write(self.code)
         os.system(self.exec_command)
@@ -48,7 +56,52 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         function_name = 'array' + '_' + str(length) + '_' + dtype
         func_str = 'def ' + function_name + '(' + arg_list + ') -> ' + return_type + ':\n'
         func_str += '\t' + return_stm
-        self.func_list.append(func_str)
+        self.func_list.append(function_name)
+        self.code += func_str + '\n\n\n'
+
+    def generate_fft(self, func):
+        arg_list = ''
+        shape = func['shape']
+        length = shape[0] * shape[1]
+        dtype = func['dtype']
+        for i in range(length):
+            arg_list += 'a_' + str(i) + ', '
+        return_stm = 'return ' + arg_list
+        return_type = 'Tuple['
+        for i in range(length):
+            return_type += dtype + ', '
+        return_type = return_type[:-2] + ']'
+        function_name = 'fft' + '_' + str(length) + '_' + dtype
+        func_str = 'def ' + function_name + '(' + arg_list + ') -> ' + return_type + ':\n'
+        w_real = []
+        w_imag = []
+        for i in range(length):
+            w_real.append(self.fixed_to_int(math.cos(2 * math.pi * i / length)))
+            w_imag.append(self.fixed_to_int(math.sin(2 * math.pi * i / length)))
+        stage = int(math.log(shape[1], 2))
+        dataset_num = shape[0]
+        func_str += '\t' + return_stm
+        self.func_list.append(function_name)
+        self.code += func_str + '\n\n\n'
+
+    def generate_array_equal(self, func):
+        arg_list = ''
+        shape = func['shape']
+        length = shape[0] * shape[1]
+        dtype = func['dtype']
+        for i in range(length):
+            arg_list += 'a_' + str(i) + ', '
+        for i in range(length):
+            arg_list += 'b_' + str(i) + ', '
+        return_stm = 'return '
+        for i in range(length):
+            return_stm += 'a_' + str(i) + ' == b_' + str(i) + ' and '
+        return_stm = return_stm[:-5]
+        return_type = 'bool'
+        function_name = 'array_equal' + '_' + str(length) + '_' + dtype
+        func_str = 'def ' + function_name + '(' + arg_list + ') -> ' + return_type + ':\n'
+        func_str += '\t' + return_stm
+        self.func_list.append(function_name)
         self.code += func_str + '\n\n\n'
     
     def generate_matmult(self, func):
@@ -97,29 +150,86 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
                     count += 1
                 func_str = func_str[:-3] + '\n'
         func_str += '\t' + return_stm
-        self.func_list.append(func_str)
+        self.func_list.append(func_name)
         self.code += func_str + '\n\n\n'
 
     def generate_print(self, func):
-        arg_list = ''
-        shape = func['shape']
-        length = shape[0] * shape[1]
-        dtype = func['dtype']
-        for i in range(length):
-            arg_list += 'a_' + str(i) + ', '
-        func_name = '_print' + '_' + str(length) + '_' + dtype
-        func_str = 'def ' + func_name + '(' + arg_list + ') -> None:\n'
-        for i in range(length):
-            func_str += '\tprint(a_' + str(i) + ')\n'
-        self.func_list.append(func_str)
-        self.code += func_str + '\n\n\n'
+        if 'shape' in func.keys():
+            arg_list = ''
+            shape = func['shape']
+            length = shape[0] * shape[1]
+            dtype = func['dtype']
+            for i in range(length):
+                arg_list += 'a_' + str(i) + ', '
+            func_name = '_print' + '_' + str(length) + '_' + dtype
+            func_str = 'def ' + func_name + '(' + arg_list + ') -> None:\n'
+            for i in range(length):
+                func_str += '\tprint(a_' + str(i) + ')\n'
+            self.func_list.append(func_name)
+            self.code += func_str + '\n\n\n'
+        elif 'complex' in func['dtype']:
+            bit = str(int(func['dtype'].split('complex')[1]) // 2)
+            int_type = 'int' + bit
+            func_name = '_print' + '_' + func['dtype']
+            func_str = 'def ' + func_name + '(a_real: ' + int_type + ', a_imag: ' + int_type + ') -> None:\n'
+            func_str += '\tprint(a_real)\n\tprint(a_imag)\n'
+            self.func_list.append(func_name)
+            self.code += func_str + '\n\n\n'
 
     def generate_fixed(self, func, func_type):
         type = func['dtype']
-        if func_type == 'add':
-            func_str = self.fixed_add(type)
-
-    def fixed_add(self, type):
+        functon_name = type + '_' + func_type
+        if functon_name in self.func_list:
+            return
+        if func_type == 'mult':
+            self.fixed_mul(type)
+        
+    def fixed_mul(self, type):
         if type == 'fixed64':
-            self.code += 'def fixed64_add(a: int64, b: int64) -> int64:\n\
-    return a + b\n\n\n'
+            self.code += 'def fixed64_mult(a: int64, b: int64) -> int64:\n\
+    temp = a * b\n\
+    # Shift right by precision to bring it back to the correct scale\n\
+    return temp >> ' + str(self.precision) + '\n\n\n'
+            
+    def generate_complex(self, func, func_type):
+        type = func['dtype']
+        if func_type == 'add':
+            func_str = self.complex_add(type)
+        elif func_type == 'sub':
+            func_str = self.complex_sub(type)
+        elif func_type == 'mult':
+            func_str = self.complex_mul(type)
+    
+    def complex_add(self, type):
+        if type == 'complex64':
+            self.code += 'def complex64_add(a_real: int32, a_imag: int32, b_real: int32, b_imag: int32) -> Tuple[int32, int32]:\n\
+    return a_real + b_real, a_imag + b_imag\n\n\n'
+        elif type == 'complex128':
+            self.code += 'def complex128_add(a_real: int64, a_imag: int64, b_real: int64, b_imag: int64) -> Tuple[int64, int64]:\n\
+    return a_real + b_real, a_imag + b_imag\n\n\n'
+            
+    def complex_sub(self, type):
+        if type == 'complex64':
+            self.code += 'def complex64_sub(a_real: int32, a_imag: int32, b_real: int32, b_imag: int32) -> Tuple[int32, int32]:\n\
+    return a_real - b_real, a_imag - b_imag\n\n\n'
+        elif type == 'complex128':
+            self.code += 'def complex128_sub(a_real: int64, a_imag: int64, b_real: int64, b_imag: int64) -> Tuple[int64, int64]:\n\
+    return a_real - b_real, a_imag - b_imag\n\n\n'
+            
+    def complex_mul(self, type):
+        if type == 'complex64':
+            self.code += 'def complex64_mult(a_real: int32, a_imag: int32, b_real: int32, b_imag: int32) -> Tuple[int32, int32]:\n\
+    real = (a_real * b_real - a_imag * b_imag) >> ' + str(self.precision) + '\n\
+    imag = (a_real * b_imag + a_imag * b_real) >> ' + str(self.precision) + '\n\
+    return real, imag\n\n\n'
+        elif type == 'complex128':
+            self.code += 'def complex128_mult(a_real: int64, a_imag: int64, b_real: int64, b_imag: int64) -> Tuple[int64, int64]:\n\
+    real = (a_real * b_real - a_imag * b_imag) >> ' + str(self.precision) + '\n\
+    imag = (a_real * b_imag + a_imag * b_real) >> ' + str(self.precision) + '\n\
+    return real, imag\n\n\n'
+            
+    def fixed_to_int(self, number):
+        return int(number * (1 << self.precision))
+            
+            
+            

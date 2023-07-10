@@ -18,23 +18,30 @@ class LastTranslator(ast.NodeTransformer):
         if type(node.n) == float:
             num = self.fixed_to_int(node.n)
             return ast.Num(n=num)
+        elif type(node.n) == complex:
+            imag = node.n.imag
+            if type(imag) == float:
+                imag = self.fixed_to_int(imag)
+            return ast.Num(n=imag)
+        else:
+            return node
     
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         new_args = []
         for arg in node.args.args:
             arg_name = arg.arg
-            if arg_name in self.array_list.keys():
-                dtype = self.array_list[arg_name]['dtype']
+            if arg_name.split('_')[0] in self.array_list.keys():
+                dtype = self.array_list[arg_name.split('_')[0]]['dtype']
                 new_args.append(ast.arg(arg=arg_name, annotation=ast.Name(id=dtype, ctx=ast.Load())))
             elif arg_name in self.float_list.keys():
                 bit = self.float_list[arg_name].split('fixed')[1]
                 int_type = 'int' + bit
                 new_args.append(ast.arg(arg=arg_name, annotation=ast.Name(id=int_type, ctx=ast.Load())))
             elif arg_name in self.complex_list.keys():
-                bit = self.complex_list[arg_name].split('complex')[1]
+                bit = str(int(self.complex_list[arg_name].split('complex')[1]) // 2)
                 int_type = 'int' + bit
-                new_args.append(ast.arg(arg=arg_name + 'real', annotation=ast.Name(id=int_type, ctx=ast.Load())))
-                new_args.append(ast.arg(arg=arg_name + 'imag', annotation=ast.Name(id=int_type, ctx=ast.Load())))
+                new_args.append(ast.arg(arg=arg_name + '_real', annotation=ast.Name(id=int_type, ctx=ast.Load())))
+                new_args.append(ast.arg(arg=arg_name + '_imag', annotation=ast.Name(id=int_type, ctx=ast.Load())))
             else:
                 new_args.append(arg)
 
