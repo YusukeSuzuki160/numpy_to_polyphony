@@ -27,7 +27,6 @@ class CodeTranslator(ast.NodeTransformer):
         self.function_analyzer.visit(self.tree)
         self.function_call_analyzer = FunctionCallAnalyzer(self.function_analyzer.array_list, self.function_analyzer.float_list, self.function_analyzer.complex_list, self.function_analyzer.np_list, self.function_analyzer.func_return)
         self.function_call_analyzer.visit(self.tree)
-        print(self.function_call_analyzer.complex_list)
         self.function_translator = FunctionTranslator(self.array_list, self.function_call_analyzer.np_list, self.function_call_analyzer.float_list, self.function_call_analyzer.complex_list, self.npalias)
         self.function_translator.visit(self.tree)
         self.npinstance_list = self.function_analyzer.np_list
@@ -116,15 +115,19 @@ class CodeTranslator(ast.NodeTransformer):
         for arg in node.args:
             args.append(self.visit(arg))
         ret_args = []
+        ret_args_non_complex = []
         for arg in args:
             if isinstance(arg, ast.Tuple):
                 for elt in arg.elts:
                     ret_args.append(elt)
-            elif isinstance(arg, Complex):
-                ret_args.extend([arg.real, arg.imag])
             else:
                 ret_args.append(arg)
-        node.args = ret_args
+        for arg in ret_args:
+            if isinstance(arg, Complex):
+                ret_args_non_complex.extend([arg.real, arg.imag])
+            else:
+                ret_args_non_complex.append(arg)
+        node.args = ret_args_non_complex
         self.generic_visit(node)
         return node
             

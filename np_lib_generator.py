@@ -1,16 +1,14 @@
 import os
 import re
+import numpy as np
 import math
 
 class NpLibGenerator: # run at the super directory of polyphony-numpy
     def __init__(self, func_dict):
         self.func_dict = func_dict
-        self.import_stm = 'from polyphony.typing import int8, int16, int32, int64, uint8, uint16, uint32, uint64, float16, float32, float64, complex64, complex128, bool_, List, Tuple\nfrom polyphony.timing import clkfence\n\n\n'
+        self.import_stm = 'from polyphony.typing import int8, int16, int32, int64, uint8, uint16, uint32, uint64, List, Tuple\nfrom polyphony.timing import clkfence, clksleep\n\n\n'
         self.func_list = []
         self.code = ''
-        self.lib_name = '_numpy.py'
-        self.lib_path = 'polyphony-numpy/polyphony/_internal/'
-        self.exec_command = 'pip install polyphony-numpy/'
         self.precision = 16
 
     def generate(self):
@@ -34,9 +32,7 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
             elif re.search('complex', func_name):
                 func_type = func_name.split('_')[1]
                 self.generate_complex(func, func_type)
-        with open(self.lib_path + self.lib_name, 'w') as f:
-            f.write(self.code)
-        os.system(self.exec_command)
+        return self.code
 
     def generate_import(self):
         self.code += self.import_stm
@@ -86,20 +82,29 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         dataset_num = shape[0]
         w_real = []
         w_imag = []
+        bit_rev_w = self.bit_reverse(stage - 1)
         bit_rev = self.bit_reverse(stage)
-        for i in range(shape[1]):
-            w_real.append(self.fixed_to_int(math.cos(2 * math.pi * i / shape[1])))
-            w_imag.append(self.fixed_to_int(math.sin(2 * math.pi * i / shape[1])))
+        interval = shape[1] // 2
+        but_interval = shape[1] // 2
+        for i in range(shape[1] // 2 + 1):
+            w_real.append(self.fixed_to_int(math.cos(-2 * np.pi * i / shape[1])))
+            w_imag.append(self.fixed_to_int(math.sin(-2 * np.pi * i / shape[1])))
         for i in range(dataset_num):
             for j in range(stage):
                 for k in range(0, shape[1], 2):
                     if j == 0:
-                        func_str += '\tt_real_' + str(i * shape[1] + k) + ', t_imag_' + str(i * shape[1] + k) + ' = complex128_add(a_real_' + str(i * shape[1] + bit_rev[k]) + ', a_imag_' + str(i * shape[1] + bit_rev[k]) + ', a_real_' + str(i * shape[1] + bit_rev[k + 1]) + ', a_imag_' + str(i * shape[1] + bit_rev[k + 1]) + ')\n'
-                        func_str += '\tt_real_' + str(i * shape[1] + k + 1) + ', t_imag_' + str(i * shape[1] + k + 1) + ' = complex128_sub(a_real_' + str(i * shape[1] + bit_rev[k]) + ', a_imag_' + str(i * shape[1] + bit_rev[k]) + ', a_real_' + str(i * shape[1] + bit_rev[k + 1]) + ', a_imag_' + str(i * shape[1] + bit_rev[k + 1]) + ')\n'
+                        func_str += '\tt0_real_' + str(i * shape[1] + k) + ', t0_imag_' + str(i * shape[1] + k) + ' = complex128_add(a_real_' + str(i * shape[1] + k // 2) + ', a_imag_' + str(i * shape[1] + k // 2) + ', a_real_' + str(i * shape[1] + k // 2 + but_interval) + ', a_imag_' + str(i * shape[1] + k // 2 + but_interval) + ')\n'
+                        func_str += '\tt0_real_' + str(i * shape[1] + k + 1) + ', t0_imag_' + str(i * shape[1] + k + 1) + ' = complex128_sub(a_real_' + str(i * shape[1] + k // 2) + ', a_imag_' + str(i * shape[1] + k // 2) + ', a_real_' + str(i * shape[1] + k // 2 + but_interval) + ', a_imag_' + str(i * shape[1] + k // 2 + but_interval) + ')\n'
                     else:
-                        func_str += '\tw_real, w_imag = complex128_mult(t_real_' + str(i * shape[1] + k + 1) + ', t_imag_' + str(i * shape[1] + k + 1) + ', ' + str(w_real[(k * (2 ** (j - 1))) % shape[1]]) + ', ' + str(w_imag[(k * (2 ** (j - 1))) % shape[1]]) + ')\n'
-                        func_str += '\tt_real_' + str(i * shape[1] + k) + ', t_imag_' + str(i * shape[1] + k) + ' = complex128_add(t_real_' + str(i * shape[1] + bit_rev[k]) + ', t_imag_' + str(i * shape[1] + bit_rev[k]) + ', w_real, w_imag)\n'
-                        func_str += '\tt_real_' + str(i * shape[1] + k + 1) + ', t_imag_' + str(i * shape[1] + k + 1) + ' = complex128_sub(t_real_' + str(i * shape[1] + bit_rev[k]) + ', t_imag_' + str(i * shape[1] + bit_rev[k]) + ', w_real, w_imag)\n'
+                        func_str += '\tw' + str(k) + '_real, w' + str(k) + '_imag = complex128_mult(t' + str(j - 1) + '_real_' + str(i * shape[1] + k // 2 + but_interval) + ', t' + str(j - 1) + '_imag_' + str(i * shape[1] + k // 2 + but_interval) + ', ' + str(w_real[bit_rev_w[((k // 2) % (2 ** j))]]) + ', ' + str(w_imag[bit_rev_w[((k // 2) % (2 ** j))]]) + ')\n'
+                        func_str += '\tt' + str(j) + '_real_' + str(i * shape[1] + k) + ', t' + str(j) + '_imag_' + str(i * shape[1] + k) + ' = complex128_add(t' + str(j - 1) + '_real_' + str(i * shape[1] + k // 2) +  ', t' + str(j - 1) + '_imag_' + str(i * shape[1] + k // 2) +  ', w' + str(k) + '_real, w' + str(k) + '_imag)\n'
+                        func_str += '\tt' + str(j) + '_real_' + str(i * shape[1] + k + 1) + ', t' + str(j) + '_imag_' + str(i * shape[1] + k + 1) + ' = complex128_sub(t' + str(j - 1) + '_real_' + str(i * shape[1] + k // 2) +  ', t' + str(j - 1) + '_imag_' + str(i * shape[1] + k // 2) +  ', w' + str(k) + '_real, w' + str(k) + '_imag)\n'
+                func_str += '\tclkfence()\n'
+                interval = interval // 2
+            for j in range(shape[1]):
+                func_str += '\tt_real_' + str(i * shape[1] + bit_rev[j]) + ' = t' + str(stage - 1) + '_real_' + str(i * shape[1] + j) + '\n'
+                func_str += '\tt_imag_' + str(i * shape[1] + bit_rev[j]) + ' = t' + str(stage - 1) + '_imag_' + str(i * shape[1] + j) + '\n'
+            func_str += '\tclkfence()\n'
         func_str += '\t' + return_stm
         self.func_list.append(function_name)
         self.code += func_str + '\n\n\n'
@@ -238,18 +243,26 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
     def complex_add(self, type):
         if type == 'complex64':
             self.code += 'def complex64_add(a_real: int32, a_imag: int32, b_real: int32, b_imag: int32) -> Tuple[int32, int32]:\n\
-    return a_real + b_real, a_imag + b_imag\n\n\n'
+    c_real = a_real + b_real\n\
+    c_imag = a_imag + b_imag\n\
+    return c_real, c_imag\n\n\n'
         elif type == 'complex128':
             self.code += 'def complex128_add(a_real: int64, a_imag: int64, b_real: int64, b_imag: int64) -> Tuple[int64, int64]:\n\
-    return a_real + b_real, a_imag + b_imag\n\n\n'
+    c_real = a_real + b_real\n\
+    c_imag = a_imag + b_imag\n\
+    return c_real, c_imag\n\n\n'
             
     def complex_sub(self, type):
         if type == 'complex64':
             self.code += 'def complex64_sub(a_real: int32, a_imag: int32, b_real: int32, b_imag: int32) -> Tuple[int32, int32]:\n\
-    return a_real - b_real, a_imag - b_imag\n\n\n'
+    c_real = a_real - b_real\n\
+    c_imag = a_imag - b_imag\n\
+    return c_real, c_imag\n\n\n'
         elif type == 'complex128':
             self.code += 'def complex128_sub(a_real: int64, a_imag: int64, b_real: int64, b_imag: int64) -> Tuple[int64, int64]:\n\
-    return a_real - b_real, a_imag - b_imag\n\n\n'
+    c_real = a_real - b_real\n\
+    c_imag = a_imag - b_imag\n\
+    return c_real, c_imag\n\n\n'
             
     def complex_mul(self, type):
         if type == 'complex64':

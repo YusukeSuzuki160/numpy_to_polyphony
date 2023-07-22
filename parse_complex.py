@@ -8,8 +8,17 @@ class Complex(ast.AST):
 
 class ComplexNumGenerator(ast.NodeTransformer):
     def visit_BinOp(self, node):
-        if isinstance(node.left, ast.Num) and isinstance(node.right, ast.Num):
-            if isinstance(node.right.n, complex):
+        if self.is_number(node.left) and self.is_number(node.right):
+            if isinstance(self.get_number_node(node.right).n, complex):
                 return Complex(node.left, node.right)
         else:
             return node
+    def is_number(self, node):
+        return isinstance(node, ast.Num) or isinstance(node, ast.UnaryOp)
+
+    def get_number_node(self, node):
+        if isinstance(node, ast.Num):
+            return node
+        elif isinstance(node, ast.UnaryOp):
+            return node.operand
+    

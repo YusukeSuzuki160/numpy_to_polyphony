@@ -1,4 +1,4 @@
-from _ast import Assign, FunctionDef, Return
+from _ast import Assign, ClassDef, FunctionDef, Return
 import ast, astor
 from typing import Any
 from parse_complex import Complex
@@ -14,11 +14,10 @@ class MainArgNameLister(ast.NodeVisitor):
         self.arg_name_list = {}
         self.current_arg = 0
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
-        if node.name == 'main':
-            for arg in node.args.args:
-                arg_name = 'main_arg' + str(self.current_arg)
-                self.arg_name_list[arg_name] = arg.arg
-                self.current_arg += 1
+        for arg in node.args.args:
+            arg_name = node.name + '_arg' + str(self.current_arg)
+            self.arg_name_list[arg_name] = arg.arg
+            self.current_arg += 1
         self.generic_visit(node)
 
 class MainCallAnalyzer(ast.NodeVisitor):
@@ -27,53 +26,54 @@ class MainCallAnalyzer(ast.NodeVisitor):
         self.float_list = {}
         self.complex_list = {}
         self.main_args = arg_name_list
+    
+    
 
     def visit_Call(self, node):
-        if isinstance(node.func, ast.Name) and node.func.id == 'main':
-            i = 0
-            for arg in node.args:
-                if isinstance(arg, ast.List):
-                    arg_name = node.func.id + '_arg' + str(i)
-                    append_dict = {}
-                    shape = get_shape_from_list(arg)
-                    if len(shape) == 1:
-                        shape = [1] + shape
-                    append_dict['shape'] = shape
-                    element = arg.elts[0]
-                    while isinstance(element, ast.List):
-                        element = element.elts[0]
-                    if isinstance(element, Complex):
+        i = 0
+        for arg in node.args:
+            if isinstance(arg, ast.List):
+                arg_name = node.func.id + '_arg' + str(i)
+                append_dict = {}
+                shape = get_shape_from_list(arg)
+                if len(shape) == 1:
+                    shape = [1] + shape
+                append_dict['shape'] = shape
+                element = arg.elts[0]
+                while isinstance(element, ast.List):
+                    element = element.elts[0]
+                if isinstance(element, Complex):
+                    dtype = 'complex128'
+                else:
+                    dtype = type(element.n)
+                    if dtype == int:
+                        dtype = 'int64'
+                    elif dtype == float:
+                        dtype = 'float64'
+                    elif dtype == bool:
+                        dtype = 'bool'
+                    elif dtype == complex:
                         dtype = 'complex128'
                     else:
-                        dtype = type(element.n)
-                        if dtype == int:
-                            dtype = 'int64'
-                        elif dtype == float:
-                            dtype = 'float64'
-                        elif dtype == bool:
-                            dtype = 'bool'
-                        elif dtype == complex:
-                            dtype = 'complex128'
-                        else:
-                            dtype = 'object'
-                    append_dict['dtype'] = dtype
-                    self.array_list[self.main_args[arg_name]] = append_dict
-                    if dtype == 'float64':
-                        length = shape[0] * shape[1]
-                        for j in range(length):
-                            self.float_list[self.main_args[arg_name] + '_' + str(j)] = 'fixed64'
-                    elif dtype == 'complex128':
-                        length = shape[0] * shape[1]
-                        for j in range(length):
-                            self.complex_list[self.main_args[arg_name] + '_' + str(j)] = 'complex128'
-                    i += 1
-                elif isinstance(arg, ast.Num):
-                    if type(arg.n) == float:
-                        self.float_list[self.main_args['main_arg' + str(i)]] = 'fixed64'
-                    i += 1
-                elif isinstance(arg, Complex):
-                    self.complex_list[self.main_args['main_arg' + str(i)]] = 'complex128'
-                    i += 1
+                        dtype = 'object'
+                append_dict['dtype'] = dtype
+                self.array_list[self.main_args[arg_name]] = append_dict
+                if dtype == 'float64':
+                    length = shape[0] * shape[1]
+                    for j in range(length):
+                        self.float_list[self.main_args[arg_name] + '_' + str(j)] = 'fixed64'
+                elif dtype == 'complex128':
+                    length = shape[0] * shape[1]
+                    for j in range(length):
+                        self.complex_list[self.main_args[arg_name] + '_' + str(j)] = 'complex128'
+                i += 1
+            elif isinstance(arg, ast.Num):
+                if type(arg.n) == float:
+                    self.float_list[self.main_args['main_arg' + str(i)]] = 'fixed64'
+                i += 1
+            elif isinstance(arg, Complex):
+                self.complex_list[self.main_args['main_arg' + str(i)]] = 'complex128'
+                i += 1
         self.generic_visit(node)
     def visit_Assign(self, node: Assign) -> Any:
         if isinstance(node.value, ast.List):
@@ -173,8 +173,12 @@ class TypeAnalyzer(ast.NodeVisitor):
                                 self.npinstance_list[arg_name] = append_dict
                                 shape = append_dict['shape']
                                 length = shape[0] * shape[1]
-                                for j in range(length):
-                                    self.complex_list[arg_name + '_' + str(j)] = 'complex128'
+                                if dtype == 'float64':
+                                    for j in range(length):
+                                        self.float_list[arg_name + '_' + str(j)] = 'fixed64'
+                                elif dtype == 'complex128':
+                                    for j in range(length):
+                                        self.complex_list[arg_name + '_' + str(j)] = 'complex128'
                 elif node.value.func.attr == 'fft':
                     if isinstance(node.value.func.value.value, ast.Name):
                         if node.value.func.value.value.id == 'np':
