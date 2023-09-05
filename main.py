@@ -1,28 +1,47 @@
-from code_translator import CodeTranslator
-from last_translator import LastTranslator
-import astor, ast
-from np_lib_generator import NpLibGenerator
-from polyphony_executer import PolyphonyExecuter
+# Standard Library
+import ast
+import logging
 import sys
+from logging import getLogger
+
+# Third Party Library
+import polyphony_lib.generate as plib
+from code_translator import CodeTranslator
+from polyphony_executer import PolyphonyExecuter
 
 
-def main():
-    filename = sys.argv[1].split('.')[0]
-    code = open(filename + '.py').read()
-    translator = CodeTranslator(code)
-    translator.visit(translator.get_tree())
-    tree = translator.get_tree()
-    LastTranslator(translator.get_array_list(), translator.get_float_list(), translator.get_complex_list(), translator.get_npinstance_list()).visit(tree)
-    source = astor.to_source(tree)
-    if not 'from polyphony import numpy' in source:
-        source = 'from polyphony import numpy as np\n' + source
-    if not 'from polyphony.typing import int8, int16, int32, int64, uint8, uint16, uint32, uint64, List, Tuple' in source:
-        source = 'from polyphony.typing import int8, int16, int32, int64, uint8, uint16, uint32, uint64, List, Tuple\n' + source
-    output_file = filename + '.polyphony.py'
-    with open(output_file, 'w') as f:
-        f.write(source)
-    # NpLibGenerator(translator.get_func_dict()).generate()
-    PolyphonyExecuter(filename).execute()
+def main() -> None:
+    logger = getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    file_handler = logging.FileHandler("./numpy_to_polyphony/.log/main.log", mode="w")
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
+    try:
+        file = sys.argv[1]
+        filename = sys.argv[1].split(".")[-2]
+        filename = filename.split("/")[-1]
+        code = open(file).read()
+        translator = CodeTranslator(code)
+        translator.process()
+        tree = translator.get_tree()
+        lib_list = translator.get_lib_list()
+        shapes = translator.get_shapes()
+        source = ast.unparse(tree)
+        import_stm = "from polyphony import testbench\nfrom polyphony.typing import int64\n"
+        for lib in lib_list:
+            import_stm += "import numpy_to_polyphony.polyphony_lib." + lib + " as " + lib + "\n"
+        source = import_stm + source
+        logger.debug("source:\n%s", source)
+        plib.generate(shapes)
+        output_file = file.replace(".py", ".polyphony.py")
+        with open(output_file, "w") as f:
+            f.write(source)
+        # NpLibGenerator(translator.get_func_dict()).generate()
+        PolyphonyExecuter(filename).execute()
+    except Exception as e:
+        logger.exception(e)
+        raise e
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
