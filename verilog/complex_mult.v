@@ -1,4 +1,4 @@
-module numpy_to_polyphony_polyphony_lib_complex_mult (
+module complex_mult (
     input wire clk,
     input wire rst,
     input wire mult_ready,

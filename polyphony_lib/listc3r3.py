@@ -3,8 +3,8 @@
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int32
 
-ROW = 5
-COL = 5
+ROW = 3
+COL = 3
 LEN = ROW * COL
 
 
@@ -44,12 +44,6 @@ def argsort(a: List, c: List):
             for k in range(COL - 1):
                 if a[i * COL + c[i * COL + k]] > a[i * COL + c[i * COL + k + 1]]:
                     c[i * COL + k], c[i * COL + k + 1] = c[i * COL + k + 1], c[i * COL + k]
-
-
-def slice_by_array(a: List, b: List, c: List):
-    for i in range(ROW):
-        for j in range(COL):
-            c[i * COL + j] = a[b[i * COL + j]]
 
 # def cov(a: List, rowvar, c: List):
 #     if rowvar:

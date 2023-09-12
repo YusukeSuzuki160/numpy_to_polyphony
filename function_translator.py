@@ -1,6 +1,17 @@
 # Standard Library
 import ast
-from _ast import Add, Attribute, BinOp, Call, FunctionDef, Load, MatMult, Mult, Name, Sub
+from _ast import (
+    Add,
+    Attribute,
+    BinOp,
+    Call,
+    FunctionDef,
+    Load,
+    MatMult,
+    Mult,
+    Name,
+    Sub,
+)
 from typing import Any
 
 # Third Party Library
@@ -41,8 +52,77 @@ class FunctionTranslator(ast.NodeTransformer):
             if isinstance(node.func.value, Name) and node.func.value.id == "np":
                 if node.func.attr == "array":
                     if isinstance(node.args[0], Name):
+                        node = self.generic_visit(node)
                         return node.args[0]
-            elif isinstance(node.func.value, Attribute) and node.func.value.value.id == "np":
+                    else:
+                        return self.generic_visit(node)
+                elif node.func.attr == ("argsort"):
+                    node = self.generic_visit(node)
+                    func_name = self.current_func
+                    arg_name = func_name + "." + node.args[0].id
+                    shape = self.np_list[arg_name]["shape"]
+                    col = shape[1]
+                    row = shape[0]
+                    attr_name = "list" + "c" + str(col) + "r" + str(row)
+                    self.lib_list.append(attr_name)
+                    self.shapes.append((col, row))
+                    return ast.copy_location(
+                        Call(
+                            func=Attribute(
+                                value=Name(id=attr_name, ctx=Load()),
+                                attr=node.func.attr,
+                                ctx=Load(),
+                            ),
+                            args=node.args,
+                            keywords=[],
+                        ),
+                        node,
+                    )
+                elif node.func.attr == "mean":
+                    node = self.generic_visit(node)
+                    axis = [kw for kw in node.keywords if kw.arg == "axis"]
+                    func_name = self.current_func
+                    arg_name = func_name + "." + node.args[0].id
+                    shape = self.np_list[arg_name]["shape"]
+                    col = shape[1]
+                    row = shape[0]
+                    attr_name = "list" + "c" + str(col) + "r" + str(row)
+                    self.lib_list.append(attr_name)
+                    self.shapes.append((col, row))
+                    if len(axis) == 0:
+                        return ast.copy_location(
+                            Call(
+                                func=Attribute(
+                                    value=Name(id=attr_name, ctx=Load()),
+                                    attr=node.func.attr,
+                                    ctx=Load(),
+                                ),
+                                args=node.args,
+                                keywords=[],
+                            ),
+                            node,
+                        )
+                    else:
+                        axis = axis[0].value.n
+                        return ast.copy_location(
+                            Call(
+                                func=Attribute(
+                                    value=Name(id=attr_name, ctx=Load()),
+                                    attr=node.func.attr + "_axis_" + str(axis),
+                                    ctx=Load(),
+                                ),
+                                args=node.args,
+                                keywords=[],
+                            ),
+                            node,
+                        )
+
+                else:
+                    return self.generic_visit(node)
+            elif (
+                isinstance(node.func.value, Attribute)
+                and node.func.value.value.id == "np"
+            ):
                 if node.func.attr == "fft":
                     if isinstance(node.args[0], Name):
                         func_name = node.func.attr
@@ -90,7 +170,9 @@ class FunctionTranslator(ast.NodeTransformer):
                             )
 
         elif (
-            isinstance(node.func, Name) and node.func.id == "print" and isinstance(node.args, Name)
+            isinstance(node.func, Name)
+            and node.func.id == "print"
+            and isinstance(node.args, Name)
         ):  # print => listcxry._print
             func_name = node.func.id
             arg_name = func_name + "." + node.args.id
@@ -100,7 +182,9 @@ class FunctionTranslator(ast.NodeTransformer):
             attr_name = "list" + "c" + str(col) + "r" + str(row)
             self.lib_list.append(attr_name)
             return Call(
-                func=Attribute(value=Name(id=attr_name, ctx=Load()), attr="_print", ctx=Load()),
+                func=Attribute(
+                    value=Name(id=attr_name, ctx=Load()), attr="_print", ctx=Load()
+                ),
                 args=node.args,
                 keywords=[],
                 starargs=None,
@@ -114,10 +198,19 @@ class FunctionTranslator(ast.NodeTransformer):
         right = node.right
         left_name = self.current_func + "." + left.id
         right_name = self.current_func + "." + right.id
-        if left_name not in self.np_list.keys() or right_name not in self.np_list.keys():
-            if left_name in self.float_list.keys() and right_name in self.float_list.keys():
+        if (
+            left_name not in self.np_list.keys()
+            or right_name not in self.np_list.keys()
+        ):
+            if (
+                left_name in self.float_list.keys()
+                and right_name in self.float_list.keys()
+            ):
                 return self.flaot_to_int(node)
-            elif left_name in self.complex_list.keys() and right_name in self.complex_list.keys():
+            elif (
+                left_name in self.complex_list.keys()
+                and right_name in self.complex_list.keys()
+            ):
                 ret_node = self.complex_to_int(node)
                 if ret_node is not None:
                     return ret_node

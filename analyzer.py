@@ -1,5 +1,7 @@
 # Standard Library
 import ast
+import copy
+import itertools
 import logging
 from _ast import (
     AST,
@@ -21,6 +23,8 @@ from _ast import (
 from logging import getLogger
 from typing import Any, Tuple
 
+import astor
+
 # Third Party Library
 from parse_complex import Complex
 from type_alias import VariableDict
@@ -28,13 +32,18 @@ from type_alias import VariableDict
 
 def process(
     tree: AST,
-) -> Tuple[VariableDict, VariableDict, VariableDict, VariableDict, VariableDict, VariableDict]:
+) -> Tuple[
+    VariableDict, VariableDict, VariableDict, VariableDict, VariableDict, VariableDict
+]:
     logger = getLogger(__name__)
     logger.setLevel(logging.DEBUG)
-    file_handler = logging.FileHandler("./numpy_to_polyphony/.log/analyzer.log", mode="w")
+    file_handler = logging.FileHandler(
+        "./numpy_to_polyphony/.log/analyzer.log", mode="w"
+    )
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
     try:
+        logger.debug("tree in ast.parse:\n%s", astor.dump_tree(tree))
         immidiateassignanalyzer = ImmidiateAssignAnalyzer()
         immidiateassignanalyzer.visit(tree)
         logger.debug(
@@ -49,10 +58,15 @@ def process(
             "complex_list in ImmidiateAssignAnalyzer:\n%s",
             immidiateassignanalyzer.complex_list,
         )
+        logger.debug(
+            "np_list in ImmidiateAssignAnalyzer:\n%s", immidiateassignanalyzer.np_list
+        )
         logger.debug("\n")
         mainargnamelister = MainArgNameLister()
         mainargnamelister.visit(tree)
-        logger.debug("arg_name_list in MainArgNameLister:\n%s", mainargnamelister.arg_name_list)
+        logger.debug(
+            "arg_name_list in MainArgNameLister:\n%s", mainargnamelister.arg_name_list
+        )
         logger.debug("\n")
         arg_name_list = mainargnamelister.arg_name_list
         maincallanalyzer = MainCallAnalyzer(
@@ -60,18 +74,21 @@ def process(
             immidiateassignanalyzer.array_list,
             immidiateassignanalyzer.float_list,
             immidiateassignanalyzer.complex_list,
+            immidiateassignanalyzer.np_list,
         )
         maincallanalyzer.visit(tree)
         array_list = maincallanalyzer.array_list
         float_list = maincallanalyzer.float_list
         complex_list = maincallanalyzer.complex_list
+        np_list = maincallanalyzer.np_list
         logger.debug("array_list in MainCallAnalyzer:\n%s", array_list)
         logger.debug("float_list in MainCallAnalyzer:\n%s", float_list)
         logger.debug("complex_list in MainCallAnalyzer:\n%s", complex_list)
+        logger.debug("np_list in MainCallAnalyzer:\n%s", np_list)
         logger.debug("\n")
-        typeanalyzer = TypeAnalyzer(array_list, float_list, complex_list)
+        typeanalyzer = TypeAnalyzer(array_list, float_list, complex_list, np_list)
         typeanalyzer.visit(tree)
-        logger.debug("npinstance_list in TypeAnalyzer:\n%s", typeanalyzer.npinstance_list)
+        logger.debug("np_list in TypeAnalyzer:\n%s", typeanalyzer.np_list)
         logger.debug("array_list in TypeAnalyzer:\n%s", typeanalyzer.array_list)
         logger.debug("float_list in TypeAnalyzer:\n%s", typeanalyzer.float_list)
         logger.debug("complex_list in TypeAnalyzer:\n%s", typeanalyzer.complex_list)
@@ -80,14 +97,18 @@ def process(
             array_list,
             typeanalyzer.float_list,
             typeanalyzer.complex_list,
-            typeanalyzer.npinstance_list,
+            typeanalyzer.np_list,
         )
         functionanalyzer.visit(tree)
-        logger.debug("func_return in FunctionAnalyzer:\n%s", functionanalyzer.func_return)
+        logger.debug(
+            "func_return in FunctionAnalyzer:\n%s", functionanalyzer.func_return
+        )
         logger.debug("np_list in FunctionAnalyzer:\n%s", functionanalyzer.np_list)
         logger.debug("array_list in FunctionAnalyzer:\n%s", functionanalyzer.array_list)
         logger.debug("float_list in FunctionAnalyzer:\n%s", functionanalyzer.float_list)
-        logger.debug("complex_list in FunctionAnalyzer:\n%s", functionanalyzer.complex_list)
+        logger.debug(
+            "complex_list in FunctionAnalyzer:\n%s", functionanalyzer.complex_list
+        )
         logger.debug("\n")
         functioncallanalyzer = FunctionCallAnalyzer(
             functionanalyzer.array_list,
@@ -97,14 +118,22 @@ def process(
             functionanalyzer.func_return,
         )
         functioncallanalyzer.visit(tree)
-        logger.debug("array_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.array_list)
-        logger.debug("float_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.float_list)
+        logger.debug(
+            "array_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.array_list
+        )
+        logger.debug(
+            "float_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.float_list
+        )
         logger.debug(
             "complex_list in FunctionCallAnalyzer:\n%s",
             functioncallanalyzer.complex_list,
         )
-        logger.debug("np_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.np_list)
-        logger.debug("func_return in FunctionCallAnalyzer:\n%s", functioncallanalyzer.func_return)
+        logger.debug(
+            "np_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.np_list
+        )
+        logger.debug(
+            "func_return in FunctionCallAnalyzer:\n%s", functioncallanalyzer.func_return
+        )
         logger.debug("\n")
         returnanalyzer = ReturnAnalyzer()
         returnanalyzer.visit(tree)
@@ -127,7 +156,7 @@ def get_shape_from_list(list_node: List | ast.expr) -> list[int]:
     if isinstance(list_node, List):
         return [len(list_node.elts)] + get_shape_from_list(list_node.elts[0])
     else:
-        return []
+        return [1]
 
 
 class ImmidiateAssignAnalyzer(ast.NodeVisitor):
@@ -135,6 +164,7 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
         self.array_list: VariableDict = {}
         self.float_list: VariableDict = {}
         self.complex_list: VariableDict = {}
+        self.np_list: VariableDict = {}
         self.current_func = ""
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
@@ -164,6 +194,90 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
             append_dict["dtype"] = "complex128"
             self.complex_list[arg_name] = append_dict
 
+        elif isinstance(node.value, Call):
+            if (
+                isinstance(node.value.func, Attribute)
+                and isinstance(node.value.func.value, Name)
+                and node.value.func.value.id == "np"
+            ):
+                if node.value.func.attr == "array":
+                    if isinstance(node.value.args[0], List):
+                        assert isinstance(node.targets[0], Name)
+                        arg_name = node.targets[0].id
+                        func_name = self.current_func
+                        arg_name = func_name + "." + arg_name
+                        append_dict = {}
+                        append_dict["scope"] = func_name
+                        append_dict["shape"] = get_shape_from_list(node.value.args[0])
+                        element = node.value.args[0].elts[0]
+                        shape = append_dict["shape"]
+                        assert isinstance(shape, list)
+                        while isinstance(element, List):
+                            element = element.elts[0]
+                        if isinstance(element, Complex):
+                            dtype = "complex128"
+                        else:
+                            assert isinstance(element, ast.Num)
+                            if isinstance(element.n, int):
+                                dtype = "int64"
+                            elif isinstance(element.n, float):
+                                dtype = "float64"
+                            elif isinstance(element.n, bool):
+                                dtype = "bool"
+                            else:
+                                dtype = "object"
+                        if node.value.keywords != []:
+                            if node.value.keywords[0].arg == "dtype":
+                                dtype = node.value.keywords[0].value.value.id
+                        append_dict["dtype"] = dtype
+                        self.np_list[arg_name] = append_dict
+                    elif isinstance(node.value.args[0], Name):
+                        assert isinstance(node.targets[0], Name)
+                        id_name = node.targets[0].id
+                        func_name = self.current_func
+                        id_name = func_name + "." + id_name
+                        arg_name = node.value.args[0].id
+                        arg_name = func_name + "." + arg_name
+                        assert arg_name in self.np_list or arg_name in self.array_list
+                        if arg_name in self.np_list:
+                            self.np_list[id_name] = copy.deepcopy(
+                                self.np_list[arg_name]
+                            )
+                            self.np_list[id_name]["scope"] = func_name
+                        elif arg_name in self.array_list:
+                            self.np_list[id_name] = copy.deepcopy(
+                                self.array_list[arg_name]
+                            )
+                            self.np_list[id_name]["scope"] = func_name
+
+        elif isinstance(node.value, List):
+            assert isinstance(node.targets[0], Name)
+            arg_name = node.targets[0].id
+            func_name = self.current_func
+            arg_name = func_name + "." + arg_name
+            append_dict = {}
+            append_dict["scope"] = func_name
+            append_dict["shape"] = get_shape_from_list(node.value)
+            element = node.value.elts[0]
+            shape = append_dict["shape"]
+            assert isinstance(shape, list)
+            while isinstance(element, List):
+                element = element.elts[0]
+            if isinstance(element, Complex):
+                dtype = "complex128"
+            else:
+                assert isinstance(element, ast.Num)
+                if isinstance(element.n, int):
+                    dtype = "int64"
+                elif isinstance(element.n, float):
+                    dtype = "float64"
+                elif isinstance(element.n, bool):
+                    dtype = "bool"
+                else:
+                    dtype = "object"
+            append_dict["dtype"] = dtype
+            self.array_list[arg_name] = append_dict
+
         elif isinstance(node.value, BinOp):
             pass
         elif isinstance(node.value, UnaryOp):
@@ -192,11 +306,13 @@ class MainCallAnalyzer(ast.NodeVisitor):
         array_list: VariableDict,
         float_list: VariableDict,
         complex_list: VariableDict,
+        np_list: VariableDict,
     ) -> None:
         self.array_list = array_list
         self.float_list = float_list
         self.complex_list = complex_list
         self.main_args = arg_name_list
+        self.np_list = np_list
         self.func_name = ""
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
@@ -268,13 +384,22 @@ class MainCallAnalyzer(ast.NodeVisitor):
                     arg_name = func_name + "." + self.main_args["main_arg" + str(i)]
                     id_name = current_func + "." + arg.id
                     if id_name in self.array_list:
-                        self.array_list[arg_name] = self.array_list[id_name]
+                        self.array_list[arg_name] = copy.deepcopy(
+                            self.array_list[id_name]
+                        )
                         self.array_list[arg_name]["scope"] = func_name
+                    elif id_name in self.np_list:
+                        self.np_list[arg_name] = copy.deepcopy(self.np_list[id_name])
+                        self.np_list[arg_name]["scope"] = func_name
                     elif id_name in self.float_list:
-                        self.float_list[arg_name] = self.float_list[id_name]
+                        self.float_list[arg_name] = copy.deepcopy(
+                            self.float_list[id_name]
+                        )
                         self.float_list[arg_name]["scope"] = func_name
                     elif id_name in self.complex_list:
-                        self.complex_list[arg_name] = self.complex_list[id_name]
+                        self.complex_list[arg_name] = copy.deepcopy(
+                            self.complex_list[id_name]
+                        )
                         self.complex_list[arg_name]["scope"] = func_name
                     i += 1
         self.generic_visit(node)
@@ -313,22 +438,30 @@ class MainCallAnalyzer(ast.NodeVisitor):
             if dtype == "float64":
                 length = shape[0] * shape[1]
                 for j in range(length):
-                    self.float_list[self.main_args[arg_name] + "_" + str(j)] = append_dict
+                    self.float_list[
+                        self.main_args[arg_name] + "_" + str(j)
+                    ] = append_dict
             elif dtype == "complex128":
                 length = shape[0] * shape[1]
                 for j in range(length):
-                    self.complex_list[self.main_args[arg_name] + "_" + str(j)] = append_dict
+                    self.complex_list[
+                        self.main_args[arg_name] + "_" + str(j)
+                    ] = append_dict
         self.generic_visit(node)
 
 
 class TypeAnalyzer(ast.NodeVisitor):
     def __init__(
-        self, arg_name_list: VariableDict, float_list: VariableDict, complex_list: VariableDict
+        self,
+        arg_name_list: VariableDict,
+        float_list: VariableDict,
+        complex_list: VariableDict,
+        np_list: VariableDict,
     ) -> None:
         self.array_list = arg_name_list
         self.float_list = float_list
         self.complex_list = complex_list
-        self.npinstance_list: VariableDict = {}
+        self.np_list = np_list
         self.current_func = ""
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
@@ -337,87 +470,120 @@ class TypeAnalyzer(ast.NodeVisitor):
 
     def visit_Assign(self, node: Assign) -> Any:
         if isinstance(node.value, Call):
-            if isinstance(node.value.func, Attribute):
+            if (
+                isinstance(node.value.func, Attribute)
+                and isinstance(node.value.func.value, Name)
+                and node.value.func.value.id == "np"
+            ):
                 if node.value.func.attr == "array":
-                    if isinstance(node.value.func.value, Name):
-                        if node.value.func.value.id == "np":
-                            if isinstance(node.value.args[0], List):
-                                assert isinstance(node.targets[0], Name)  # TODO: support subscript
-                                arg_name = node.targets[0].id
-                                append_dict = {}
-                                func_name = self.current_func
-                                append_dict["scope"] = func_name
-                                append_dict["shape"] = get_shape_from_list(node.value.args[0])
-                                element = node.value.args[0].elts[0]
-                                arg_name = func_name + "." + arg_name
-                                shape = append_dict["shape"]
-                                assert isinstance(shape, list)
-                                while isinstance(element, List):
-                                    element = element.elts[0]
-                                if isinstance(element, Complex):
-                                    dtype = "complex128"
-                                else:
-                                    assert isinstance(element, ast.Num)
-                                    if isinstance(element.n, int):
-                                        dtype = "int64"
-                                    elif isinstance(element.n, float):
-                                        dtype = "float64"
-                                    elif isinstance(element.n, bool):
-                                        dtype = "bool"
-                                    elif isinstance(element.n, complex):
-                                        dtype = "complex128"
-                                    else:
-                                        dtype = "object"
-                                if node.value.keywords != []:
-                                    if node.value.keywords[0].arg == "dtype":
-                                        dtype = node.value.keywords[0].value.value.id
+                    if isinstance(node.value.args[0], List):
+                        assert isinstance(
+                            node.targets[0], Name
+                        )  # TODO: support subscript
+                        arg_name = node.targets[0].id
+                        append_dict = {}
+                        func_name = self.current_func
+                        append_dict["scope"] = func_name
+                        append_dict["shape"] = get_shape_from_list(node.value.args[0])
+                        element = node.value.args[0].elts[0]
+                        arg_name = func_name + "." + arg_name
+                        shape = append_dict["shape"]
+                        assert isinstance(shape, list)
+                        while isinstance(element, List):
+                            element = element.elts[0]
+                        if isinstance(element, Complex):
+                            dtype = "complex128"
+                        else:
+                            assert isinstance(element, ast.Num)
+                            if isinstance(element.n, int):
+                                dtype = "int64"
+                            elif isinstance(element.n, float):
+                                dtype = "float64"
+                            elif isinstance(element.n, bool):
+                                dtype = "bool"
+                            elif isinstance(element.n, complex):
+                                dtype = "complex128"
+                            else:
+                                dtype = "object"
+                        if node.value.keywords != []:
+                            if node.value.keywords[0].arg == "dtype":
+                                dtype = node.value.keywords[0].value.value.id
+                        append_dict["dtype"] = dtype
+                        self.np_list[arg_name] = append_dict
+                        if dtype == "float64":
+                            length = shape[0] * shape[1]
+                            for j in range(length):
+                                self.float_list[arg_name + "_" + str(j)] = append_dict
+                        elif dtype == "complex128":
+                            length = shape[0] * shape[1]
+                            for j in range(length):
+                                self.complex_list[arg_name + "_" + str(j)] = append_dict
+                    if isinstance(node.value.args[0], Name):
+                        assert isinstance(
+                            node.targets[0], Name
+                        )  # TODO: support subscript
+                        arg_name = node.targets[0].id
+                        func_name = self.current_func
+                        arg_name = func_name + "." + arg_name
+                        id_name = func_name + "." + node.value.args[0].id
+                        append_dict = {}
+                        append_dict = self.array_list[id_name]
+                        append_dict["scope"] = func_name
+                        dtype = append_dict["dtype"]
+                        if node.value.keywords != []:
+                            if node.value.keywords[0].arg == "dtype":
+                                dtype = node.value.keywords[0].value.attr
                                 append_dict["dtype"] = dtype
-                                self.npinstance_list[arg_name] = append_dict
-                                if dtype == "float64":
-                                    length = shape[0] * shape[1]
-                                    for j in range(length):
-                                        self.float_list[arg_name + "_" + str(j)] = append_dict
-                                elif dtype == "complex128":
-                                    length = shape[0] * shape[1]
-                                    for j in range(length):
-                                        self.complex_list[arg_name + "_" + str(j)] = append_dict
-                            if isinstance(node.value.args[0], Name):
-                                assert isinstance(node.targets[0], Name)  # TODO: support subscript
-                                arg_name = node.targets[0].id
-                                func_name = self.current_func
-                                arg_name = func_name + "." + arg_name
-                                id_name = func_name + "." + node.value.args[0].id
-                                append_dict = {}
-                                append_dict = self.array_list[id_name]
-                                func_name = self.current_func
-                                append_dict["scope"] = func_name
-                                dtype = append_dict["dtype"]
-                                if node.value.keywords != []:
-                                    if node.value.keywords[0].arg == "dtype":
-                                        dtype = node.value.keywords[0].value.attr
-                                        append_dict["dtype"] = dtype
-                                self.npinstance_list[arg_name] = append_dict
-                                shape = append_dict["shape"]
-                                assert isinstance(shape, list)
-                                length = shape[0] * shape[1]
-                                for j in range(length):
-                                    self.complex_list[arg_name + "_" + str(j)] = append_dict
+                        self.np_list[arg_name] = append_dict
+                        shape = append_dict["shape"]
+                        assert isinstance(shape, list)
+                        length = shape[0] * shape[1]
+                        for j in range(length):
+                            self.complex_list[arg_name + "_" + str(j)] = append_dict
+                elif node.value.func.attr == "argsort":
+                    if isinstance(node.value.args[0], Name):
+                        assert isinstance(node.targets[0], Name)
+                        arg_name = node.targets[0].id
+                        func_name = self.current_func
+                        arg_name = func_name + "." + arg_name
+                        id_name = func_name + "." + node.value.args[0].id
+                        append_dict = copy.deepcopy(self.np_list[id_name])
+                        append_dict["scope"] = func_name
+                        self.np_list[arg_name] = append_dict
+
+                elif node.value.func.attr == "mean":
+                    if isinstance(node.value.args[0], Name):
+                        assert isinstance(node.targets[0], Name)
+                        axis = [kw for kw in node.value.keywords if kw.arg == "axis"]
+                        if axis != []:
+                            arg_name = node.targets[0].id
+                            func_name = self.current_func
+                            arg_name = func_name + "." + arg_name
+                            id_name = func_name + "." + node.value.args[0].id
+                            append_dict = copy.deepcopy(self.np_list[id_name])
+                            append_dict["scope"] = func_name
+                            self.np_list[arg_name] = append_dict
+
                 elif node.value.func.attr == "fft":
                     if isinstance(node.value.func.value.value, ast.Name):
                         if node.value.func.value.value.id == "np":
                             if isinstance(node.value.args[0], ast.Name):
-                                assert isinstance(node.targets[0], Name)  # TODO: support subscript
+                                assert isinstance(
+                                    node.targets[0], Name
+                                )  # TODO: support subscript
                                 arg_name = node.targets[0].id
                                 func_name = self.current_func
                                 arg_name = func_name + "." + arg_name
-                                append_dict = self.npinstance_list[arg_name]
+                                append_dict = self.np_list[arg_name]
                                 append_dict["scope"] = func_name
                                 append_dict["dtype"] = "complex128"
                                 shape = append_dict["shape"]
                                 length = shape[0] * shape[1]
                                 for j in range(length):
-                                    self.complex_list[arg_name + "_" + str(j)] = append_dict
-                                self.npinstance_list[arg_name] = append_dict
+                                    self.complex_list[
+                                        arg_name + "_" + str(j)
+                                    ] = append_dict
+                                self.np_list[arg_name] = append_dict
                 # elif node.value.func.attr == 'append':
                 # if isinstance(node.value.func.value.value, ast.Name):
                 # if node.value.func.value.value.id == 'np':
@@ -460,9 +626,9 @@ class TypeAnalyzer(ast.NodeVisitor):
             func_name = self.current_func
             arg_name = func_name + "." + node.targets[0].id
             id_name = func_name + "." + node.value.id
-            if id_name in self.npinstance_list:
-                self.npinstance_list[arg_name] = self.npinstance_list[id_name]
-                self.npinstance_list[arg_name]["scope"] = func_name
+            if id_name in self.np_list:
+                self.np_list[arg_name] = self.np_list[id_name]
+                self.np_list[arg_name]["scope"] = func_name
             elif id_name in self.float_list:
                 self.float_list[arg_name] = self.float_list[id_name]
                 self.float_list[arg_name]["scope"] = func_name
@@ -478,7 +644,7 @@ class TypeAnalyzer(ast.NodeVisitor):
             arg_name = func_name + "." + node.targets[0].id
             left_name = func_name + "." + node.value.left.id
             right_name = func_name + "." + node.value.right.id
-            if left_name not in self.npinstance_list.keys():
+            if left_name not in self.np_list.keys():
                 if left_name in self.float_list.keys():
                     self.float_list[arg_name] = self.float_list[left_name]
                     self.float_list[arg_name]["scope"] = func_name
@@ -489,11 +655,11 @@ class TypeAnalyzer(ast.NodeVisitor):
                     self.complex_list[arg_name]["scope"] = func_name
                     self.generic_visit(node)
                     return
-            left_type = self.npinstance_list[left_name]["dtype"]
-            right_type = self.npinstance_list[right_name]["dtype"]
+            left_type = self.np_list[left_name]["dtype"]
+            right_type = self.np_list[right_name]["dtype"]
             assert left_type == right_type
-            left_shape = self.npinstance_list[left_name]["shape"]
-            right_shape = self.npinstance_list[right_name]["shape"]
+            left_shape = self.np_list[left_name]["shape"]
+            right_shape = self.np_list[right_name]["shape"]
             dtype = left_type
             append_dict = {}
             append_dict["scope"] = func_name
@@ -510,7 +676,7 @@ class TypeAnalyzer(ast.NodeVisitor):
                 assert left_shape[1] == right_shape[0]
                 append_dict["shape"] = shape
             append_dict["dtype"] = dtype
-            self.npinstance_list[arg_name] = append_dict
+            self.np_list[arg_name] = append_dict
         elif isinstance(node.value, UnaryOp):
             self.visit(node.value)
             assert isinstance(node.targets[0], Name)  # TODO: support subscript
@@ -518,25 +684,87 @@ class TypeAnalyzer(ast.NodeVisitor):
             func_name = self.current_func
             arg_name = func_name + "." + node.targets[0].id
             id_name = func_name + "." + node.value.operand.id
-            dtype = self.npinstance_list[id_name]["dtype"]
+            dtype = self.np_list[id_name]["dtype"]
             append_dict = {}
             append_dict["scope"] = func_name
             append_dict["dtype"] = dtype
-            append_dict["shape"] = self.npinstance_list[id_name]["shape"]
-            self.npinstance_list[arg_name] = append_dict
+            append_dict["shape"] = self.np_list[id_name]["shape"]
+            self.np_list[arg_name] = append_dict
         elif isinstance(node.value, Subscript):
             self.visit(node.value)
             assert isinstance(node.targets[0], Name)  # TODO: support subscript
             assert isinstance(node.value.value, Name)  # TODO: support subscript
-            func_name = self.current_func
-            arg_name = func_name + "." + node.targets[0].id
-            id_name = func_name + "." + node.value.value.id
-            dtype = self.npinstance_list[id_name]["dtype"]
-            append_dict = {}
-            append_dict["scope"] = func_name
-            append_dict["dtype"] = dtype
-            append_dict["shape"] = self.npinstance_list[id_name]["shape"][1:]
-            self.npinstance_list[arg_name] = append_dict
+            if isinstance(node.value.slice, ast.Index):
+                func_name = self.current_func
+                arg_name = func_name + "." + node.targets[0].id
+                id_name = func_name + "." + node.value.value.id
+                dtype = self.np_list[id_name]["dtype"]
+                append_dict = {}
+                append_dict["scope"] = func_name
+                append_dict["dtype"] = dtype
+                append_dict["shape"] = self.np_list[id_name]["shape"][1:]
+                self.np_list[arg_name] = append_dict
+            elif isinstance(node.value.slice, ast.Slice):
+                pass  # TODO: support slice
+            elif isinstance(node.value.slice, ast.Name):
+                func_name = self.current_func
+                arg_name = func_name + "." + node.targets[0].id
+                id_name = func_name + "." + node.value.value.id
+                dtype = self.np_list[id_name]["dtype"]
+                append_dict = {}
+                append_dict["scope"] = func_name
+                append_dict["dtype"] = dtype
+                append_dict["shape"] = self.np_list[id_name]["shape"]
+                self.np_list[arg_name] = append_dict
+            elif isinstance(node.value.slice, ast.Tuple):
+                left = node.value.slice.elts[0]
+                right = node.value.slice.elts[1]
+                func_name = self.current_func
+                arg_name = func_name + "." + node.targets[0].id
+                id_name = func_name + "." + node.value.value.id
+                dtype = self.np_list[id_name]["dtype"]
+                append_dict = {}
+                append_dict["scope"] = func_name
+                append_dict["dtype"] = dtype
+                shape = self.np_list[id_name]["shape"]
+                if isinstance(left, ast.Num):
+                    left = left.n
+                elif isinstance(left, ast.Name):
+                    left = self.np_list[func_name + "." + left.id]["shape"]
+                elif isinstance(left, ast.Slice):
+                    if left.lower is None:
+                        lower = 0
+                    else:
+                        lower = left.lower.n
+                    if left.upper is None:
+                        upper = shape[0]
+                    else:
+                        upper = left.upper.n
+                    if left.step is None:
+                        step = 1
+                    else:
+                        step = left.step.n
+                    left = (upper - lower) // step
+                if isinstance(right, ast.Num):
+                    right = right.n
+                elif isinstance(right, ast.Name):
+                    right = self.np_list[func_name + "." + right.id]["shape"]
+                elif isinstance(right, ast.Slice):
+                    if right.lower is None:
+                        lower = 0
+                    else:
+                        lower = right.lower.n
+                    if right.upper is None:
+                        upper = shape[0]
+                    else:
+                        upper = right.upper.n
+                    if right.step is None:
+                        step = 1
+                    else:
+                        step = right.step.n
+                    right = (upper - lower) // step
+                append_dict["shape"] = itertools.chain.from_iterable([left, right])
+                self.np_list[arg_name] = append_dict
         self.generic_visit(node)
 
 
@@ -599,14 +827,14 @@ class FunctionCallAnalyzer(ast.NodeVisitor):
                     src_type = self.func_return[node.value.func.id]
                     func_name = self.current_func
                     dist_name = func_name + "." + dist_name
-                    if isinstance(src_type, dict):
+                    if src_type.get("shape") is not None:
                         self.np_list[dist_name] = src_type
                         self.np_list[dist_name]["scope"] = func_name
-                    elif isinstance(src_type, str):
-                        if "fixed" in src_type:
+                    else:
+                        if "fixed" in src_type.get("dtype"):
                             self.float_list[dist_name] = src_type
                             self.float_list[dist_name]["scope"] = func_name
-                        elif "complex" in src_type:
+                        elif "complex" in src_type.get("dtype"):
                             self.complex_list[dist_name] = src_type
                             self.complex_list[dist_name]["scope"] = func_name
 

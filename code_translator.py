@@ -30,6 +30,7 @@ class CodeTranslator(ast.NodeTransformer):
             self.npalias = "np"
             self.code = code
             self.tree = ast.parse(code)
+            logger.debug("tree in ast.parse:\n%s", astor.dump_tree(self.tree))
             self.complex_parser = ComplexNumGenerator()
             self.complex_parser.visit(self.tree)
             (

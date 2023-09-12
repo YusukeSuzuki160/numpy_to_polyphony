@@ -5,7 +5,6 @@ import sys
 from logging import getLogger
 
 # Third Party Library
-import polyphony_lib.generate as plib
 from code_translator import CodeTranslator
 from polyphony_executer import PolyphonyExecuter
 
@@ -29,15 +28,14 @@ def main() -> None:
         source = ast.unparse(tree)
         import_stm = "from polyphony import testbench\nfrom polyphony.typing import int64\n"
         for lib in lib_list:
-            import_stm += "import numpy_to_polyphony.polyphony_lib." + lib + " as " + lib + "\n"
+            import_stm += "import " + lib + "\n"
         source = import_stm + source
         logger.debug("source:\n%s", source)
-        plib.generate(shapes)
         output_file = file.replace(".py", ".polyphony.py")
         with open(output_file, "w") as f:
             f.write(source)
         # NpLibGenerator(translator.get_func_dict()).generate()
-        PolyphonyExecuter(filename).execute()
+        PolyphonyExecuter(filename, shapes).execute()
     except Exception as e:
         logger.exception(e)
         raise e

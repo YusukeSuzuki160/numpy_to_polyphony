@@ -39,6 +39,7 @@ class LastTranslator(ast.NodeTransformer):
         self.return_type = return_type
         self.nonreturn_func = ["complex", "float"]
         self.current_func = ""
+        self.is_return = False
 
     def visit_Import(self, node: Import) -> Any:
         if node.names[0].name == "numpy":
@@ -61,12 +62,20 @@ class LastTranslator(ast.NodeTransformer):
             return node
 
     def visit_Return(self, node: Return) -> Any:
-        return None
+        if self.is_return:
+            self.is_return = False
+            return self.generic_visit(node)
+        else:
+            return None
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         self.current_func = node.name
         if node.name in self.return_var.keys():
             return_var = self.return_var[node.name]
+            var_full = node.name + "." + return_var
+            if var_full in self.float_list.keys() or var_full in self.complex_list.keys():
+                self.is_return = True
+                return self.generic_visit(node)
             node.args.args.append(ast.arg(arg=return_var, annotation=None))
         self.generic_visit(node)
         return node

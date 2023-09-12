@@ -42,6 +42,8 @@ class ReturnTranslator(ast.NodeTransformer):
         self.generic_visit(node)
         func_name = self.current_func
         dst_name = func_name + "." + dst.id
+        if dst_name in self.complex_list.keys() or dst_name in self.float_list.keys():
+            return self.generic_visit(node)
         if self.return_var.get(func_name) == dst.id:
             call_args = node.value.args
             call_args.append(dst)
