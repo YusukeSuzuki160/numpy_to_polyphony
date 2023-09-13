@@ -1,25 +1,19 @@
 # This is calclations for list. Size is fixed.
 
 from polyphony import pipelined, testbench, unroll
-from polyphony.typing import List, int8, int32
+from polyphony.typing import List, int32
 
-ROW = 3
-COL = 3
+ROW = 12
+COL = 1
 LEN = ROW * COL
 
 
-def transpose(a: List, c: List) -> None:
-    for i in range(ROW):
-        for j in range(COL):
-            c[j * COL + i] = a[i * COL + j]
-
-
-def add(a: List, b: List, c: List) -> None:
+def add(a: List, b: List, c: List):
     for i in unroll(range(LEN)):
         c[i] = a[i] + b[i]
 
 
-def matmult(a: List, b: List, col: int8, c: List) -> None:
+def matmult(a: List, b: List, col, c: List):
     for i in range(col):
         for j in range(ROW):
             for k in unroll(range(COL)):
@@ -35,13 +29,13 @@ def matmult(a: List, b: List, col: int8, c: List) -> None:
 #         c[i] = x
 
 
-def append(a: List, item: int32, c: List) -> None:
+def append(a: List, item: int32, c: List):
     for i in unroll(range(LEN)):
         c[i] = a[i]
     c[len(a)] = item
 
 
-def argsort(a: List, c: List) -> None:
+def argsort(a: List, c: List):
     for i in range(COL):
         for j in unroll(range(ROW)):
             c[i * COL + j] = j
@@ -52,65 +46,34 @@ def argsort(a: List, c: List) -> None:
                     c[i * COL + k], c[i * COL + k + 1] = c[i * COL + k + 1], c[i * COL + k]
 
 
-def slice_by_array(a: List, b: List, c: List) -> None:
+def slice_by_array(a: List, b: List, c: List):
     for i in range(ROW):
-        for j in unroll(range(COL)):
+        for j in range(COL):
             c[i * COL + j] = a[b[i * COL + j]]
 
-
-def slice_by_tuple(a: List, b: List, c: List, d: List) -> None:
-    for i in range(ROW):
-        for j in unroll(range(COL)):
-            index = b[i] * COL + c[j]
-            d[i * COL + j] = a[index]
-
-
-def cov(a: List, rowvar: bool, c: List) -> None:
-    if rowvar:
-        a_mean = [0] * COL
-        mean_axis_0(a, a_mean)
-        for i in range(ROW):
-            for j in range(COL):
-                a[i * COL + j] -= a_mean[j]
-        a_T = [0] * LEN
-        transpose(a, a_T)
-        matmult(a, a_T, COL, c)
-        for i in range(LEN):
-            c[i] = c[i] // (ROW - 1)
-    else:
-        a_mean = [0] * ROW
-        a_T = [0] * LEN
-        transpose(a, a_T)
-        mean_axis_1(a, a_mean)
-        for j in range(ROW):
-            for i in range(COL):
-                a_T[i * COL + j] -= a_mean[i]
-        a_T_T = [0] * LEN
-        transpose(a_T, a_T_T)
-        matmult(a_T, a_T_T, ROW, c)
-        for i in range(LEN):
-            c[i] = c[i] // (COL - 1)
+# def cov(a: List, rowvar, c: List):
+#     if rowvar:
+#         for i in range(ROW):
+#             for j in range(ROW):
+#                 for k in unroll(range(COL)):
+#                     c[i * COL + j] += a[k * COL + i] * a[k * COL + j]
+#     else:
+#         for i in range(ROW):
+#             for j in range(ROW):
+#                 for k in unroll(range(COL)):
+#                     c[i * COL + j] += a[i * COL + k] * a[j * COL + k]
 
 
-def mean(a: List) -> int32:
+def mean(a: List):
     s = 0
     for i in unroll(range(LEN)):
         s += a[i]
     return s // LEN
 
-
-def mean_axis_0(a: List, c: List) -> None:
+def mean_axis_0(a: List, c: List):
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[j] += a[i * COL + j]
-    for i in unroll(range(COL)):
-        c[i] = c[i] // ROW
-
-
-def mean_axis_1(a: List, c: List) -> None:
-    for i in range(COL):
-        for j in unroll(range(ROW)):
-            c[i] += a[j * COL + i]
     for i in unroll(range(COL)):
         c[i] = c[i] // ROW
 

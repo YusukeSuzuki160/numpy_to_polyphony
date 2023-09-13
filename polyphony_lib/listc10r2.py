@@ -3,15 +3,9 @@
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32
 
-ROW = 3
-COL = 3
+ROW = 2
+COL = 10
 LEN = ROW * COL
-
-
-def transpose(a: List, c: List) -> None:
-    for i in range(ROW):
-        for j in range(COL):
-            c[j * COL + i] = a[i * COL + j]
 
 
 def add(a: List, b: List, c: List) -> None:
@@ -65,31 +59,17 @@ def slice_by_tuple(a: List, b: List, c: List, d: List) -> None:
             d[i * COL + j] = a[index]
 
 
-def cov(a: List, rowvar: bool, c: List) -> None:
+def cov(a: List, rowvar, c: List) -> None:
     if rowvar:
-        a_mean = [0] * COL
-        mean_axis_0(a, a_mean)
         for i in range(ROW):
-            for j in range(COL):
-                a[i * COL + j] -= a_mean[j]
-        a_T = [0] * LEN
-        transpose(a, a_T)
-        matmult(a, a_T, COL, c)
-        for i in range(LEN):
-            c[i] = c[i] // (ROW - 1)
+            for j in range(ROW):
+                for k in unroll(range(COL)):
+                    c[i * COL + j] += a[k * COL + i] * a[k * COL + j]
     else:
-        a_mean = [0] * ROW
-        a_T = [0] * LEN
-        transpose(a, a_T)
-        mean_axis_1(a, a_mean)
-        for j in range(ROW):
-            for i in range(COL):
-                a_T[i * COL + j] -= a_mean[i]
-        a_T_T = [0] * LEN
-        transpose(a_T, a_T_T)
-        matmult(a_T, a_T_T, ROW, c)
-        for i in range(LEN):
-            c[i] = c[i] // (COL - 1)
+        for i in range(ROW):
+            for j in range(ROW):
+                for k in unroll(range(COL)):
+                    c[i * COL + j] += a[i * COL + k] * a[j * COL + k]
 
 
 def mean(a: List) -> int32:
@@ -103,14 +83,6 @@ def mean_axis_0(a: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[j] += a[i * COL + j]
-    for i in unroll(range(COL)):
-        c[i] = c[i] // ROW
-
-
-def mean_axis_1(a: List, c: List) -> None:
-    for i in range(COL):
-        for j in unroll(range(ROW)):
-            c[i] += a[j * COL + i]
     for i in unroll(range(COL)):
         c[i] = c[i] // ROW
 
