@@ -1,10 +1,14 @@
-import ast 
+# Standard Library
+import ast
+from _ast import BinOp
+from typing import Any
+
 
 class Complex(ast.AST):
-    def __init__(self, real, imag):
+    def __init__(self, real: ast.Num, imag: ast.Num) -> None:
         self.real = real
         self.imag = imag
-        self._fields = ('real', 'imag')
+
 
 class ComplexNumGenerator(ast.NodeTransformer):
     def visit_BinOp(self, node):

@@ -1,19 +1,44 @@
-from _ast import Call, FunctionDef, Import, Return
+# Standard Library
 import ast
+from _ast import (
+    AnnAssign,
+    Assign,
+    Attribute,
+    Call,
+    Expr,
+    FunctionDef,
+    Import,
+    Load,
+    Name,
+    Return,
+    Subscript,
+)
 from typing import Any
-import struct
+
+# Third Party Library
+from parse_complex import Complex
+from type_alias import VariableDict
+
 
 class ReturnAnalyzer(ast.NodeVisitor):
-    def __init__(self, array_list, float_list, complex_list, np_list):
+    def __init__(
+        self,
+        array_list: VariableDict,
+        float_list: VariableDict,
+        complex_list: VariableDict,
+        np_list: VariableDict,
+    ) -> None:
         self.array_list = array_list
         self.float_list = float_list
         self.complex_list = complex_list
         self.np_list = np_list
-        self.returns = {}
-        self.function_stack = []
+        self.returns: dict[str, list[str]] = {}
+        self.function_stack: list[str] = []
+
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         self.function_stack.append(node.name)
         self.generic_visit(node)
+
     def visit_Return(self, node: Return) -> Any:
         returns = []
         if isinstance(node.value, ast.Name):
@@ -24,139 +49,136 @@ class ReturnAnalyzer(ast.NodeVisitor):
                     returns.append(value.id)
         func_name = self.function_stack.pop()
         self.returns[func_name] = returns
-    
+
 
 class LastTranslator(ast.NodeTransformer):
-    def __init__(self, arrat_list, float_list, complex_list, np_list, returns):
+    def __init__(
+        self,
+        arrat_list: VariableDict,
+        float_list: VariableDict,
+        complex_list: VariableDict,
+        np_list: VariableDict,
+        return_var: VariableDict,
+        return_type: VariableDict,
+    ) -> None:
         self.precision = 16
         self.array_list = arrat_list
         self.float_list = float_list
         self.complex_list = complex_list
         self.np_list = np_list
-        self.returns = returns
-        self.add_args = {}
-        self.func_stack = []
-
-    def visit(self, node):
-        return super().visit(node)
+        self.return_var = return_var
+        self.return_type = return_type
+        self.nonreturn_func = ["complex", "float"]
+        self.current_func = ""
+        self.is_return = False
 
     def visit_Import(self, node: Import) -> Any:
-        if node.names[0].name == 'numpy':
+        if node.names[0].name == "numpy":
+            self.generic_visit(node)
             return None
         else:
+            self.generic_visit(node)
             return node
-    
-    def visit_Num(self, node):
-        if type(node.n) == float:
+
+    def visit_Num(self, node: ast.Num) -> Any:
+        if isinstance(node.n, float):
             num = self.fixed_to_int(node.n)
             return ast.Num(n=num)
-        elif type(node.n) == complex:
+        elif isinstance(node.n, complex):
             imag = node.n.imag
-            if type(imag) == float:
+            if isinstance(imag, float):
                 imag = self.fixed_to_int(imag)
             return ast.Num(n=imag)
         else:
             return node
-    
-    def visit_FunctionDef(self, node: FunctionDef) -> Any:
-        self.func_stack.append(node.name)
-        new_args = []
-        for arg in node.args.args:
-            arg_name = arg.arg
-            if arg_name.split('_')[0] in self.array_list.keys():
-                dtype = self.array_list[arg_name.split('_')[0]]['dtype']
-                if dtype == 'complex128':
-                    dtype = 'int64'
-                new_args.append(ast.arg(arg=arg_name, annotation=ast.Name(id=dtype, ctx=ast.Load())))
-            elif arg_name in self.float_list.keys():
-                bit = self.float_list[arg_name].split('fixed')[1]
-                int_type = 'int' + bit
-                new_args.append(ast.arg(arg=arg_name, annotation=ast.Name(id=int_type, ctx=ast.Load())))
-            elif arg_name in self.complex_list.keys():
-                bit = str(int(self.complex_list[arg_name].split('complex')[1]) // 2)
-                int_type = 'int' + bit
-                new_args.append(ast.arg(arg=arg_name + '_real', annotation=ast.Name(id=int_type, ctx=ast.Load())))
-                new_args.append(ast.arg(arg=arg_name + '_imag', annotation=ast.Name(id=int_type, ctx=ast.Load())))
-            else:
-                new_args.append(arg)
 
-        if node.name in self.returns.keys():
-            returns = self.returns[node.name]
-            for ret in returns:
-                raw_name = ret.split('_')[0]
-                if raw_name in self.array_list.keys():
-                    dtype = self.array_list[raw_name]['dtype']
-                    if dtype == 'complex128':
-                        dtype = 'int64'
-                    elif dtype == 'complex64':
-                        dtype = 'int32'
-                    elif dtype == 'float64':
-                        dtype = 'int64'
-                    elif dtype == 'float32':
-                        dtype = 'int32'
-                elif raw_name in self.np_list.keys():
-                    dtype = self.np_list[raw_name]['dtype']
-                    if dtype == 'complex128':
-                        dtype = 'int64'
-                    elif dtype == 'complex64':
-                        dtype = 'int32'
-                    elif dtype == 'float64':
-                        dtype = 'int64'
-                    elif dtype == 'float32':
-                        dtype = 'int32'
-                elif raw_name in self.float_list.keys():
-                    bit = self.float_list[raw_name].split('fixed')[1]
-                    dtype = 'int' + bit
-                elif raw_name in self.complex_list.keys():
-                    bit = str(int(self.complex_list[raw_name].split('complex')[1]) // 2)
-                    dtype = 'int' + bit
-                else:
-                    dtype = 'int32'
-                new_args.append(ast.arg(arg=ret, annotation=ast.Name(id=dtype, ctx=ast.Load())))
-        node.args.args = new_args
-        self.generic_visit(node)
-        return node
-    
-    def visit_Assign(self, node):
-        if isinstance(node.value, ast.Call):
-            # print(ast.dump(node))
-            if isinstance(node.value.func, ast.Attribute):
-                func_name = node.value.func.attr
-            else:
-                func_name = node.value.func.id
-            if func_name in self.returns.keys():
-                node = node.value
-                returns = self.returns[func_name]
-                self.add_args[self.func_stack[-1]] = []
-                for ret in returns:
-                    node.args.append(ast.Name(id=ret, ctx=ast.Load()))
-                    self.add_args[self.func_stack[-1]].append(ret)
-                self.generic_visit(node)
-                return ast.Expr(value=node)
-        
-        self.generic_visit(node)
-        return node
-    
-    
     def visit_Return(self, node: Return) -> Any:
-        self.func_stack.pop()
-        return None
-
-    
-    def fixed_to_int(self, number):
-        return int(number * (1 << self.precision))
-    
-
-class AddArgsDifinition(ast.NodeTransformer):
-    def __init__(self, add_args) -> None:
-        self.add_args = add_args
-        super().__init__()
+        if self.is_return:
+            self.is_return = False
+            return self.generic_visit(node)
+        else:
+            return None
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
-        args_difinitnion = []
-        func_name = node.name
-        if func_name in self.add_args.keys():
-            for arg in self.add_args[func_name]:
-                args_difinitnion.append(ast.Assign(targets=[ast.Name(id=arg, ctx=ast.Store())], value=ast.Name(id='0', ctx=ast.Load())))
-        node.body = args_difinitnion + node.body
+        self.current_func = node.name
+        if node.name in self.return_var.keys():
+            return_var = self.return_var[node.name]
+            var_full = node.name + "." + return_var
+            if var_full in self.float_list.keys() or var_full in self.complex_list.keys():
+                self.is_return = True
+                return self.generic_visit(node)
+            node.args.args.append(ast.arg(arg=return_var, annotation=None))
+        self.generic_visit(node)
         return node
+
+    def visit_Assign(self, node: Assign) -> Any:
+        if isinstance(node.targets[0], Name):
+            func_name = self.current_func
+            var_name = func_name + "." + node.targets[0].id
+            value = self.visit(node.value)
+            if var_name in self.complex_list.keys():
+                return AnnAssign(
+                    target=node.targets[0],
+                    annotation=Name(id="int64", ctx=Load()),
+                    value=value,
+                    simple=1,
+                )
+            else:
+                return self.generic_visit(node)
+        elif isinstance(node.value, Call):
+            if not isinstance(node.targets[0], Name):
+                return self.generic_visit(node)  # TODO: fix
+            return_var = node.targets[0].id
+            if (
+                isinstance(node.value.func, Attribute)
+                and isinstance(node.value.func.value, Name)
+                and node.value.func.value.id in self.nonreturn_func
+            ):
+                return self.generic_visit(node)
+            else:
+                node.value.args.append(Name(id=return_var, ctx=Load()))
+                new_stm = Expr(value=node.value)
+                if return_var in self.np_list and return_var not in self.return_var.values():
+                    return_var_scope = self.current_func + "." + return_var
+                    shape = self.np_list[return_var_scope]["shape"]
+                    assert isinstance(shape, list)
+                    len = shape[0] * shape[1]
+                    init_stm = ast.parse(return_var + " = [0] * " + str(len)).body[0]
+                    return [init_stm, new_stm]
+                else:
+                    return new_stm
+        else:
+            return self.generic_visit(node)
+
+    def visit_Subscript(self, node: Subscript) -> Any:
+        if isinstance(node.value, Subscript):
+            if isinstance(node.value.value, Name):
+                func_name = self.current_func
+                id_name = func_name + "." + node.value.value.id
+                if id_name in self.np_list.keys():
+                    shape = self.np_list[id_name]["shape"]
+                    col = shape[1]
+                    index = ast.BinOp(
+                        left=ast.BinOp(
+                            left=node.value.slice,
+                            op=ast.Mult(),
+                            right=ast.Num(n=col),
+                        ),
+                        op=ast.Add(),
+                        right=node.slice,
+                    )
+                    return Subscript(
+                        value=Name(id=node.value.value.id),
+                        slice=index,
+                        ctx=node.ctx,
+                    )
+        return node
+
+    def visit_Complex(self, node: Complex) -> Any:
+        real = self.visit(node.real)
+        imag = self.visit(node.imag)
+        num = real.n << 32 | imag.n
+        return ast.Num(n=num)
+
+    def fixed_to_int(self, number: float) -> int:
+        return int(number * (1 << self.precision))
