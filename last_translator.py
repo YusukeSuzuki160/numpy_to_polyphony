@@ -102,12 +102,13 @@ class LastTranslator(ast.NodeTransformer):
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         self.current_func = node.name
         if node.name in self.return_var.keys():
-            return_var = self.return_var[node.name]
-            var_full = node.name + "." + return_var
-            if var_full in self.float_list.keys() or var_full in self.complex_list.keys():
-                self.is_return = True
-                return self.generic_visit(node)
-            node.args.args.append(ast.arg(arg=return_var, annotation=None))
+            return_vars = self.return_var[node.name]
+            for return_var in return_vars:
+                var_full = node.name + "." + return_var
+                if var_full not in self.np_list.keys() and var_full not in self.array_list.keys():
+                    self.is_return = True
+                    continue
+                node.args.args.append(ast.arg(arg=return_var, annotation=None))
         self.generic_visit(node)
         return node
 

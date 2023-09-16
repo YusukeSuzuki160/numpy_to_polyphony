@@ -1,11 +1,11 @@
-import listc2r1 as list_linalg
+import listc14r1 as list_linalg
 # This is calclations for list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, uint32
 
-ROW = 2
-COL = 2
+ROW = 10
+COL = 14
 LEN = ROW * COL
 PRECISION = 16
 
@@ -155,7 +155,8 @@ def mean_axis_0(a: List, c: List) -> None:
         for j in unroll(range(COL)):
             c[j] += a[i * COL + j]
     for i in unroll(range(COL)):
-        c[i] = c[i] // ROW
+        c_signed: int32 = c[i]
+        c[i] = float.div(c_signed, ROW)
 
 
 def mean_axis_1(a: List, c: List) -> None:
@@ -163,7 +164,8 @@ def mean_axis_1(a: List, c: List) -> None:
         for j in unroll(range(ROW)):
             c[j] += a[j * COL + i]
     for i in unroll(range(ROW)):
-        c[i] = c[i] // COL
+        c_signed: int32 = c[i]
+        c[i] = float.div(c_signed, COL)
 
 
 def linalg_eigh(

@@ -11,12 +11,13 @@ from analyzer import process
 from function_translator import FunctionTranslator
 from last_translator import LastTranslator
 from parse_complex import Complex, ComplexNumGenerator
+from pure_executer import PureExecuter
 from return_translator import ReturnTranslator
 from type_alias import VariableDict
 
 
 class CodeTranslator(ast.NodeTransformer):
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, main_func: str) -> None:
         logger = getLogger(__name__)
         logger.setLevel(logging.DEBUG)
         file_handler = logging.FileHandler(
@@ -31,6 +32,9 @@ class CodeTranslator(ast.NodeTransformer):
             self.code = code
             self.tree = ast.parse(code)
             logger.debug("tree in ast.parse:\n%s", astor.dump_tree(self.tree))
+            pure_executer = PureExecuter()
+            self.tree = pure_executer.visit(self.tree)
+            logger.debug("PureExecuter:\n%s", astor.dump_tree(self.tree))
             self.complex_parser = ComplexNumGenerator()
             self.complex_parser.visit(self.tree)
             (
@@ -40,7 +44,7 @@ class CodeTranslator(ast.NodeTransformer):
                 self.complex_list,
                 self.np_list,
                 self.func_return,
-            ) = process(self.tree)
+            ) = process(self.tree, main_func)
             logger.debug("return_var in process:\n%s", self.return_var)
             logger.debug("array_list in process:\n%s", self.array_list)
             logger.debug("float_list in process:\n%s", self.float_list)

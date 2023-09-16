@@ -1,11 +1,11 @@
-import listc2r1 as list_linalg
+import listc14r1 as list_linalg
 # This is calclations for list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, uint32
 
-ROW = 2
-COL = 2
+ROW = 506
+COL = 14
 LEN = ROW * COL
 PRECISION = 16
 
@@ -13,7 +13,7 @@ PRECISION = 16
 def transpose(a: List, c: List) -> None:
     for i in range(ROW):
         for j in range(COL):
-            c[j * ROW + i] = a[i * COL + j]
+            c[j * COL + i] = a[i * COL + j]
 
 
 def add(a: List, b: List, c: List) -> None:
@@ -62,20 +62,18 @@ def sub_horizontal(a: List, b: List, c: List) -> None:
 
 def matmult(a: List, b: List, col: int8, c: List) -> None:
     for i in range(col):
-        for j in range(COL):
-            for k in unroll(range(ROW)):
-                a_signed = a[k * COL + j]
-                b_signed = b[j * col + i]
-                c[k * col + i] += a_signed * b_signed
-
+        for j in range(ROW):
+            for k in unroll(range(COL)):
+                c[i * COL + j] += a[i * COL + k] * b[k * COL + j]
 
 def matmult_float(a: List, b: List, col: int8, c: List) -> None:
     for i in range(col):
-        for j in range(COL):
-            for k in unroll(range(ROW)):
-                a_signed = a[k * COL + j]
-                b_signed = b[j * col + i]
-                c[k * col + i] += float.mult(a_signed, b_signed)
+        for j in range(ROW):
+            for k in unroll(range(COL)):
+                a_signed = a[i * COL + k]
+                b_signed = b[k * COL + j]
+                c[i * COL + j] += float.mult(a_signed, b_signed)
+
 
 def sqrt(a: List, c: List) -> None:
     # Newton's method
@@ -109,6 +107,7 @@ def slice_by_array(a: List, b: List, c: List) -> None:
             c[i * COL + j] = a[b[i * COL + j]]
 
 
+
 def slice_by_tuple(a: List, b: List, c: List, d: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
@@ -133,8 +132,8 @@ def cov(a: List, rowvar: bool, c: List) -> None:
         a_T = [0] * LEN
         transpose(a, a_T)
         mean_axis_1(a, a_mean)
-        for j in range(COL):
-            for i in range(ROW):
+        for j in range(ROW):
+            for i in range(COL):
                 a_T[i * COL + j] -= a_mean[i]
         a_T_T = [0] * LEN
         transpose(a_T, a_T_T)
@@ -161,29 +160,30 @@ def mean_axis_0(a: List, c: List) -> None:
 def mean_axis_1(a: List, c: List) -> None:
     for i in range(COL):
         for j in unroll(range(ROW)):
-            c[j] += a[j * COL + i]
-    for i in unroll(range(ROW)):
-        c[i] = c[i] // COL
+            c[i] += a[j * COL + i]
+    for i in unroll(range(COL)):
+        c[i] = c[i] // ROW
 
 
 def linalg_eigh(
     A: List, eigenvalues: List, eigenvectors: List
 ) -> None:  # can use only symmetric matrix
-    max_iter = 10
+    max_iter = 1000
+    tol = 1
 
     def is_diagonal(m: List) -> bool:
         # 行列が対角であるかのチェック
         for i in range(ROW):
             for j in range(COL):
-                m_signed = m[i * COL + j]
-                if i != j and (m_signed > 100 or m_signed < -100):
+                if i != j and m[i * COL + j] != 0:
                     return False
         return True
-
+    
     V = [0] * (LEN)
 
     for i in unroll(range(ROW)):
         V[i * ROW + i] = 65536
+    diff = 2
     while max_iter > 0:
         Q = [0] * (LEN)
         R = [0] * (LEN)
@@ -245,13 +245,10 @@ def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
             list_linalg.sub(v, v2, v)
 
         R[j * COL + j] = list_linalg.linalg_norm(v)
-        if R[j * COL + j] < 10 and R[j * COL + j] > -10:
-            continue
-        else:
-            for i in unroll(range(ROW)):
-                v_signed = v[i]
-                r_signed = R[j * COL + j]
-                Q[i * COL + j] = float.div(v_signed, r_signed)
+        for i in unroll(range(ROW)):
+            v_signed = v[i]
+            r_signed = R[j * COL + j]
+            Q[i * COL + j] = float.div(v_signed, r_signed)
 
 
 def linalg_norm(A: List) -> int32:

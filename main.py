@@ -1,4 +1,5 @@
 # Standard Library
+import argparse
 import ast
 import logging
 import sys
@@ -15,12 +16,20 @@ def main() -> None:
     file_handler = logging.FileHandler("./numpy_to_polyphony/.log/main.log", mode="w")
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file")
+    parser.add_argument("--main", "-m")
+    args = parser.parse_args()
+    main_func = args.main
+    if main_func is None:
+        main_func = "main"
+    logger.debug("main_func: %s", main_func)
     try:
         file = sys.argv[1]
         filename = sys.argv[1].split(".")[-2]
         filename = filename.split("/")[-1]
         code = open(file).read()
-        translator = CodeTranslator(code)
+        translator = CodeTranslator(code, main_func)
         translator.process()
         tree = translator.get_tree()
         lib_list = translator.get_lib_list()

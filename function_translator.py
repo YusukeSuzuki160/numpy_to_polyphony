@@ -1,18 +1,6 @@
 # Standard Library
 import ast
-from _ast import (
-    Add,
-    Attribute,
-    BinOp,
-    Call,
-    FunctionDef,
-    Load,
-    MatMult,
-    Mult,
-    Name,
-    Sub,
-    Subscript,
-)
+from _ast import Add, Attribute, BinOp, Call, Div, FunctionDef, Load, MatMult, Mult, Name, Sub
 from typing import Any
 
 # Third Party Library
@@ -52,7 +40,7 @@ class FunctionTranslator(ast.NodeTransformer):
         if isinstance(node.func, Attribute):
             if isinstance(node.func.value, Name) and node.func.value.id == "np":
                 if node.func.attr == "array":
-                    if isinstance(node.args[0], Name):
+                    if isinstance(node.args[0], Name) or isinstance(node.args[0], ast.List):
                         node = self.generic_visit(node)
                         return node.args[0]
                     else:
@@ -148,9 +136,9 @@ class FunctionTranslator(ast.NodeTransformer):
                 else:
                     return self.generic_visit(node)
             elif isinstance(node.func.value, Attribute) and node.func.value.value.id == "np":
-                if node.func.attr == "fft":
+                if node.func.value.attr == "fft":
                     if isinstance(node.args[0], Name):
-                        func_name = node.func.attr
+                        func_name = self.current_func
                         arg_name = func_name + "." + node.args[0].id
                         if arg_name in self.array_list.keys():
                             shape = self.array_list[arg_name]["shape"]
@@ -158,13 +146,14 @@ class FunctionTranslator(ast.NodeTransformer):
                             row = shape[0]
                             dtype = self.array_list[arg_name]["dtype"]
                             attr_name = "list" + "c" + str(col) + "r" + str(row)
+                            function_name = node.func.attr
                             self.lib_set.add(attr_name)
                             self.shapes.add((col, row))
                             return ast.copy_location(
                                 Call(
                                     func=Attribute(
                                         value=Name(id=attr_name, ctx=Load()),
-                                        attr="fft",
+                                        attr=function_name,
                                         ctx=Load(),
                                     ),
                                     args=node.args,
@@ -178,6 +167,52 @@ class FunctionTranslator(ast.NodeTransformer):
                             row = shape[0]
                             dtype = self.np_list[arg_name]["dtype"]
                             function_name = node.func.attr
+                            attr_name = "list" + "c" + str(col) + "r" + str(row)
+                            self.lib_set.add(attr_name)
+                            self.shapes.add((col, row))
+                            return ast.copy_location(
+                                Call(
+                                    func=Attribute(
+                                        value=Name(id=attr_name, ctx=Load()),
+                                        attr=function_name,
+                                        ctx=Load(),
+                                    ),
+                                    args=node.args,
+                                    keywords=[],
+                                ),
+                                node,
+                            )
+                elif node.func.value.attr == "linalg":
+                    if isinstance(node.args[0], Name):
+                        func_name = self.current_func
+                        arg_name = func_name + "." + node.args[0].id
+                        if arg_name in self.array_list.keys():
+                            shape = self.array_list[arg_name]["shape"]
+                            col = shape[1]
+                            row = shape[0]
+                            dtype = self.array_list[arg_name]["dtype"]
+                            attr_name = "list" + "c" + str(col) + "r" + str(row)
+                            function_name = node.func.value.attr + "_" + node.func.attr
+                            self.lib_set.add(attr_name)
+                            self.shapes.add((col, row))
+                            return ast.copy_location(
+                                Call(
+                                    func=Attribute(
+                                        value=Name(id=attr_name, ctx=Load()),
+                                        attr=function_name,
+                                        ctx=Load(),
+                                    ),
+                                    args=node.args,
+                                    keywords=[],
+                                ),
+                                node,
+                            )
+                        elif arg_name in self.np_list.keys():
+                            shape = self.np_list[arg_name]["shape"]
+                            col = shape[1]
+                            row = shape[0]
+                            dtype = self.np_list[arg_name]["dtype"]
+                            function_name = node.func.value.attr + "_" + node.func.attr
                             attr_name = "list" + "c" + str(col) + "r" + str(row)
                             self.lib_set.add(attr_name)
                             self.shapes.add((col, row))
@@ -243,13 +278,37 @@ class FunctionTranslator(ast.NodeTransformer):
         self.shapes.add((left_col, left_row))
         args = [left, right]
         if isinstance(node.op, Add):
-            function_name = "add"
+            if left_shape == right_shape:
+                function_name = "add"
+            else:
+                if right_shape[0] == 1:
+                    function_name = "add_horizontal"
+                    args = [left, right]
+                elif right_shape[1] == 1:
+                    function_name = "add_vertical"
+                    args = [left, right]
         elif isinstance(node.op, Sub):
-            function_name = "sub"
+            if left_shape == right_shape:
+                function_name = "sub"
+            else:
+                if right_shape[0] == 1:
+                    function_name = "sub_horizontal"
+                    args = [left, right]
+                elif right_shape[1] == 1:
+                    function_name = "sub_vertical"
+                    args = [left, right]
         elif isinstance(node.op, Mult):
-            function_name = "mult"
+            dtype = self.np_list[left_name]["dtype"]
+            if dtype == "float64":
+                function_name = "mult_float"
+            else:
+                function_name = "mult"
         elif isinstance(node.op, MatMult):
-            function_name = "matmult"
+            dtype = self.np_list[left_name]["dtype"]
+            if dtype == "float64":
+                function_name = "matmult_float"
+            else:
+                function_name = "matmult"
             col = right_shape[1]
             args.append(ast.Num(col))
         if function_name != "":
@@ -268,15 +327,16 @@ class FunctionTranslator(ast.NodeTransformer):
 
     def visit_Assign(self, node: ast.Assign) -> Any:
         if isinstance(node.value, ast.Subscript):
+            target_shape = self.np_list[self.current_func + "." + node.targets[0].id]["shape"]
+            target_col = target_shape[1]
+            target_row = target_shape[0]
             if isinstance(node.value.slice, ast.Name):
                 func_name = self.current_func
                 arg_name = func_name + "." + node.value.slice.id
                 shape = self.np_list[arg_name]["shape"]
-                col = shape[1]
-                row = shape[0]
-                attr_name = "list" + "c" + str(col) + "r" + str(row)
+                attr_name = "list" + "c" + str(target_col) + "r" + str(target_row)
                 self.lib_set.add(attr_name)
-                self.shapes.add((col, row))
+                self.shapes.add((target_col, target_row))
                 return ast.Assign(
                     targets=node.targets,
                     value=Call(
@@ -295,9 +355,6 @@ class FunctionTranslator(ast.NodeTransformer):
                 shape = self.np_list[arg_name]["shape"]
                 col = shape[1]
                 row = shape[0]
-                attr_name = "list" + "c" + str(col) + "r" + str(row)
-                self.lib_set.add(attr_name)
-                self.shapes.add((col, row))
                 left = node.value.slice.elts[0]
                 right = node.value.slice.elts[1]
                 ret_stm = []
@@ -328,7 +385,10 @@ class FunctionTranslator(ast.NodeTransformer):
                     if lower is None:
                         lower = 0
                     else:
-                        lower = lower.n
+                        if isinstance(lower, ast.Num):
+                            lower = lower.n
+                        elif isinstance(lower, ast.UnaryOp):
+                            lower = col - lower.operand.n
                     if upper is None:
                         upper = col
                     else:
@@ -341,6 +401,9 @@ class FunctionTranslator(ast.NodeTransformer):
                     right_arg = "slice_right_" + arg_name.replace(".", "_")
                 else:
                     right_arg = right.id
+                attr_name = "list" + "c" + str(target_col) + "r" + str(target_row)
+                self.lib_set.add(attr_name)
+                self.shapes.add((target_col, target_row))
                 ret_stm.append(
                     ast.Assign(
                         targets=node.targets,
@@ -350,7 +413,11 @@ class FunctionTranslator(ast.NodeTransformer):
                                 attr="slice_by_tuple",
                                 ctx=Load(),
                             ),
-                            args=[node.value.value, Name(id=left_arg, ctx=Load()), Name(id=right_arg, ctx=Load())],
+                            args=[
+                                node.value.value,
+                                Name(id=left_arg, ctx=Load()),
+                                Name(id=right_arg, ctx=Load()),
+                            ],
                             keywords=[],
                         ),
                     )
@@ -365,11 +432,13 @@ class FunctionTranslator(ast.NodeTransformer):
         function_name = ""
         left_name = self.current_func + "." + node.left.id
         if isinstance(node.op, Add):
-            function_name = "add"
+            return self.generic_visit(node)
         elif isinstance(node.op, Sub):
-            function_name = "sub"
+            return self.generic_visit(node)
         elif isinstance(node.op, Mult):
             function_name = "mult"
+        elif isinstance(node.op, Div):
+            function_name = "div"
 
         if function_name != "":
             return ast.copy_location(

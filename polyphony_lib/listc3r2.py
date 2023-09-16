@@ -1,11 +1,11 @@
-import listc2r1 as list_linalg
+import listc3r1 as list_linalg_qr
 # This is calclations for list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, uint32
 
 ROW = 2
-COL = 2
+COL = 3
 LEN = ROW * COL
 PRECISION = 16
 
@@ -13,7 +13,7 @@ PRECISION = 16
 def transpose(a: List, c: List) -> None:
     for i in range(ROW):
         for j in range(COL):
-            c[j * ROW + i] = a[i * COL + j]
+            c[j * COL + i] = a[i * COL + j]
 
 
 def add(a: List, b: List, c: List) -> None:
@@ -62,20 +62,10 @@ def sub_horizontal(a: List, b: List, c: List) -> None:
 
 def matmult(a: List, b: List, col: int8, c: List) -> None:
     for i in range(col):
-        for j in range(COL):
-            for k in unroll(range(ROW)):
-                a_signed = a[k * COL + j]
-                b_signed = b[j * col + i]
-                c[k * col + i] += a_signed * b_signed
+        for j in range(ROW):
+            for k in unroll(range(COL)):
+                c[i * COL + j] += a[i * COL + k] * b[k * COL + j]
 
-
-def matmult_float(a: List, b: List, col: int8, c: List) -> None:
-    for i in range(col):
-        for j in range(COL):
-            for k in unroll(range(ROW)):
-                a_signed = a[k * COL + j]
-                b_signed = b[j * col + i]
-                c[k * col + i] += float.mult(a_signed, b_signed)
 
 def sqrt(a: List, c: List) -> None:
     # Newton's method
@@ -133,8 +123,8 @@ def cov(a: List, rowvar: bool, c: List) -> None:
         a_T = [0] * LEN
         transpose(a, a_T)
         mean_axis_1(a, a_mean)
-        for j in range(COL):
-            for i in range(ROW):
+        for j in range(ROW):
+            for i in range(COL):
                 a_T[i * COL + j] -= a_mean[i]
         a_T_T = [0] * LEN
         transpose(a_T, a_T_T)
@@ -161,64 +151,47 @@ def mean_axis_0(a: List, c: List) -> None:
 def mean_axis_1(a: List, c: List) -> None:
     for i in range(COL):
         for j in unroll(range(ROW)):
-            c[j] += a[j * COL + i]
-    for i in unroll(range(ROW)):
-        c[i] = c[i] // COL
+            c[i] += a[j * COL + i]
+    for i in unroll(range(COL)):
+        c[i] = c[i] // ROW
 
 
-def linalg_eigh(
-    A: List, eigenvalues: List, eigenvectors: List
-) -> None:  # can use only symmetric matrix
-    max_iter = 10
+def linalg_eigh(A: List, eigenvalues: List, eigenvectors: List) -> None:  # can use only symmetric matrix
+    max_iter = 1000
+    tol = 1
 
-    def is_diagonal(m: List) -> bool:
-        # 行列が対角であるかのチェック
-        for i in range(ROW):
-            for j in range(COL):
-                m_signed = m[i * COL + j]
-                if i != j and (m_signed > 100 or m_signed < -100):
-                    return False
-        return True
-
+    Q = [0] * (LEN)
+    R = [0] * (LEN)
+    linalg_qr(A, Q, R)
     V = [0] * (LEN)
 
     for i in unroll(range(ROW)):
-        V[i * ROW + i] = 65536
-    while max_iter > 0:
-        Q = [0] * (LEN)
-        R = [0] * (LEN)
-        linalg_qr(A, Q, R)
+        V[i * ROW + i] = 1
+    for _ in range(max_iter):
         A_new = [0] * (LEN)
-        matmult_float(R, Q, ROW, A_new)
-        for i in unroll(range(LEN)):
-            A[i] = A_new[i]
-        V_tmp = [0] * (LEN)
-        matmult_float(V, Q, ROW, V_tmp)
-        for i in unroll(range(LEN)):
-            V[i] = V_tmp[i]
-        if is_diagonal(A):
-            max_iter = 0
-        else:
-            max_iter -= 1
+        matmult(R, Q, ROW, A_new)
+        A_diff = [0] * (LEN)
+        sub(A_new, A, A_diff)
+        diff = linalg_norm(A_diff)
+        if diff < tol:
+            break
+        A = A_new
+        linalg_qr(A, Q, R)
+        matmult(V, Q, ROW, V)
     for i in unroll(range(ROW)):
-        eigenvalues[i] = A[i * COL + i]
-    for i in unroll(range(LEN)):
-        eigenvectors[i] = V[i]
+        eigenvalues[i] = A[i * ROW + i]
+    for i in range(ROW):
+        for j in unroll(range(ROW)):
+            eigenvectors[i * ROW + j] = V[i * ROW + j]
 
     # 固有値を昇順にソート
     idx = [0] * ROW
-    list_linalg.argsort(eigenvalues, idx)
-    eigenvalues_tmp = [0] * ROW
-    list_linalg.slice_by_array(eigenvalues, idx, eigenvalues_tmp)
-    for i in unroll(range(ROW)):
-        eigenvalues[i] = eigenvalues_tmp[i]
+    argsort(eigenvalues, idx)
+    slice_by_array(eigenvalues, idx, eigenvalues)
     indexes = [0] * ROW
     for i in unroll(range(ROW)):
         indexes[i] = i
-    eigenvectors_tmp = [0] * LEN
-    slice_by_tuple(eigenvectors, indexes, idx, eigenvectors_tmp)
-    for i in unroll(range(LEN)):
-        eigenvectors[i] = eigenvectors_tmp[i]
+    slice_by_tuple(eigenvectors, idx, indexes, eigenvectors)
 
 
 def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
@@ -242,16 +215,13 @@ def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
                 q_signed = Q[k * COL + i]
                 r_signed = R[i * COL + j]
                 v2[k] = float.mult(q_signed, r_signed)
-            list_linalg.sub(v, v2, v)
+            list_linalg_qr.sub(v, v2, v)
 
-        R[j * COL + j] = list_linalg.linalg_norm(v)
-        if R[j * COL + j] < 10 and R[j * COL + j] > -10:
-            continue
-        else:
-            for i in unroll(range(ROW)):
-                v_signed = v[i]
-                r_signed = R[j * COL + j]
-                Q[i * COL + j] = float.div(v_signed, r_signed)
+        R[j * COL + j] = list_linalg_qr.linalg_norm(v)
+        for i in unroll(range(ROW)):
+            v_signed = v[i]
+            r_signed = R[j * COL + j]
+            Q[i * COL + j] = float.div(v_signed, r_signed)
 
 
 def linalg_norm(A: List) -> int32:

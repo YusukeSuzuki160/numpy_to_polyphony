@@ -38,56 +38,107 @@ class ReturnTranslator(ast.NodeTransformer):
     def visit_Assign(self, node: ast.Assign) -> Any:
         if not isinstance(node.value, ast.Call):
             return self.generic_visit(node)
-        dst = node.targets[0]
-        self.generic_visit(node)
-        func_name = self.current_func
-        dst_name = func_name + "." + dst.id
-        if dst_name in self.complex_list.keys() or dst_name in self.float_list.keys():
-            return self.generic_visit(node)
-        if self.return_var.get(func_name) == dst.id:
-            call_args = node.value.args
-            call_args.append(dst)
-            node.value.args = call_args
-            expr = ast.Expr(value= node.value)
-            return [expr]
-        else:
-            if dst_name in self.np_list:
-                shape = self.np_list[dst_name]["shape"]
-                len = shape[0] * shape[1]
-                dtype = self.np_list[dst_name]["dtype"]
-                match dtype:
-                    case "int64":
-                        dec = ast.parse(f"{dst.id} = [0] * {len}")
-                    case "float64":
-                        dec = ast.parse(f"{dst.id} = [0.0] * {len}")
-                    case "complex128":
-                        dec = ast.parse(f"{dst.id} = [0] * {len}")
-                    case _:
-                        dec = ast.parse(f"{dst.id} = [0] * {len}")
-                dec = dec.body[0]
-                call_args = node.value.args
-                call_args.append(dst)
-                node.value.args = call_args
-                expr = ast.Expr(value= node.value)
-                return [dec, expr]
-            elif dst_name in self.array_list:
-                shape = self.array_list[dst_name]["shape"]
-                len = shape[0] * shape[1]
-                dtype = self.array_list[dst_name]["dtype"]
-                match dtype:
-                    case "int64":
-                        dec = ast.parse(f"{dst.id} = [0] * {len}")
-                    case "float64":
-                        dec = ast.parse(f"{dst.id} = [0.0] * {len}")
-                    case "complex128":
-                        dec = ast.parse(f"{dst.id} = [0] * {len}")
-                    case _:
-                        dec = ast.parse(f"{dst.id} = [0] * {len}")
-                dec = dec.body[0]
-                call_args = node.value.args
-                call_args.append(dst)
-                node.value.args = call_args
-                expr = ast.Expr(value= node.value)
-                return [dec, expr]
-            else:
+        if isinstance(node.targets[0], ast.Name):
+            dst = node.targets[0]
+            self.generic_visit(node)
+            func_name = self.current_func
+            dst_name = func_name + "." + dst.id
+            if dst_name not in self.np_list.keys() and dst_name not in self.array_list.keys():
                 return self.generic_visit(node)
+            if func_name in self.return_var.keys() and dst.id in self.return_var.get(func_name):
+                call_args = node.value.args
+                call_args.append(dst)
+                node.value.args = call_args
+                expr = ast.Expr(value=node.value)
+                return [expr]
+            else:
+                if dst_name in self.np_list:
+                    shape = self.np_list[dst_name]["shape"]
+                    len = shape[0] * shape[1]
+                    dtype = self.np_list[dst_name]["dtype"]
+                    match dtype:
+                        case "int64":
+                            dec = ast.parse(f"{dst.id} = [0] * {len}")
+                        case "float64":
+                            dec = ast.parse(f"{dst.id} = [0.0] * {len}")
+                        case "complex128":
+                            dec = ast.parse(f"{dst.id} = [0] * {len}")
+                        case _:
+                            dec = ast.parse(f"{dst.id} = [0] * {len}")
+                    dec = dec.body[0]
+                    call_args = node.value.args
+                    call_args.append(dst)
+                    node.value.args = call_args
+                    expr = ast.Expr(value=node.value)
+                    return [dec, expr]
+                elif dst_name in self.array_list:
+                    shape = self.array_list[dst_name]["shape"]
+                    len = shape[0] * shape[1]
+                    dtype = self.array_list[dst_name]["dtype"]
+                    match dtype:
+                        case "int64":
+                            dec = ast.parse(f"{dst.id} = [0] * {len}")
+                        case "float64":
+                            dec = ast.parse(f"{dst.id} = [0.0] * {len}")
+                        case "complex128":
+                            dec = ast.parse(f"{dst.id} = [0] * {len}")
+                        case _:
+                            dec = ast.parse(f"{dst.id} = [0] * {len}")
+                    dec = dec.body[0]
+                    call_args = node.value.args
+                    call_args.append(dst)
+                    node.value.args = call_args
+                    expr = ast.Expr(value=node.value)
+                    return [dec, expr]
+                else:
+                    return self.generic_visit(node)
+        elif isinstance(node.targets[0], ast.Tuple):
+            func_name = self.current_func
+            args = node.value.args
+            decls = []
+            for elt in node.targets[0].elts:
+                assert isinstance(elt, ast.Name)
+                dst = elt
+                dst_name = func_name + "." + dst.id
+                if dst_name not in self.np_list.keys() and dst_name not in self.array_list.keys():
+                    continue
+                if func_name in self.return_var.keys() and dst.id in self.return_var.get(func_name):
+                    args.append(dst)
+                else:
+                    if dst_name in self.np_list.keys():
+                        shape = self.np_list[dst_name]["shape"]
+                        len = shape[0] * shape[1]
+                        dtype = self.np_list[dst_name]["dtype"]
+                        match dtype:
+                            case "int64":
+                                dec = ast.parse(f"{dst.id} = [0] * {len}")
+                            case "float64":
+                                dec = ast.parse(f"{dst.id} = [0.0] * {len}")
+                            case "complex128":
+                                dec = ast.parse(f"{dst.id} = [0] * {len}")
+                            case _:
+                                dec = ast.parse(f"{dst.id} = [0] * {len}")
+                        dec = dec.body[0]
+                        decls.append(dec)
+                        args.append(dst)
+                    elif dst_name in self.array_list.keys():
+                        shape = self.array_list[dst_name]["shape"]
+                        len = shape[0] * shape[1]
+                        dtype = self.array_list[dst_name]["dtype"]
+                        match dtype:
+                            case "int64":
+                                dec = ast.parse(f"{dst.id} = [0] * {len}")
+                            case "float64":
+                                dec = ast.parse(f"{dst.id} = [0.0] * {len}")
+                            case "complex128":
+                                dec = ast.parse(f"{dst.id} = [0] * {len}")
+                            case _:
+                                dec = ast.parse(f"{dst.id} = [0] * {len}")
+                        dec = dec.body[0]
+                        decls.append(dec)
+                        args.append(dst)
+                    else:
+                        continue
+            node.value.args = args
+            expr = ast.Expr(value=node.value)
+            return decls + [expr]

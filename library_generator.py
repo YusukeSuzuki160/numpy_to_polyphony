@@ -7,7 +7,7 @@ import polyphony_lib.generate as plib
 SRC_PATH = os.path.abspath("./numpy_to_polyphony/verilog/") + "/"
 DST_PATH = os.path.abspath("./verilog-code/") + "/"
 PYTHON_PATH = os.path.abspath("./python-code/") + "/"
-GENERATE_FILE = ["complex_mult.v"]
+GENERATE_FILE = ["complex_mult.v", "float_mult.v"]
 LIB_PATH = os.path.abspath("./numpy_to_polyphony/polyphony_lib/") + "/"
 
 

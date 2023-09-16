@@ -1,13 +1,11 @@
-import listc10r1 as list_linalg
 # This is calclations for list. Size is fixed.
-import float
-from polyphony import pipelined, testbench, unroll
-from polyphony.typing import List, int8, int32, int64, uint32
 
-ROW = 2
-COL = 10
+from polyphony import pipelined, testbench, unroll
+from polyphony.typing import List, int8, int32
+
+ROW = 6
+COL = 1
 LEN = ROW * COL
-PRECISION = 16
 
 
 def transpose(a: List, c: List) -> None:
@@ -28,13 +26,13 @@ def add_scalar(a: List, b: int32, c: List) -> None:
 
 def add_vertical(a: List, b: List, c: List) -> None:
     for i in range(ROW):
-        for j in unroll(range(COL)):
+        for j in range(COL):
             c[i * COL + j] = a[i * COL + j] + b[j]
 
 
 def add_horizontal(a: List, b: List, c: List) -> None:
     for i in range(ROW):
-        for j in unroll(range(COL)):
+        for j in range(COL):
             c[i * COL + j] = a[i * COL + j] + b[i]
 
 
@@ -56,7 +54,7 @@ def sub_vertical(a: List, b: List, c: List) -> None:
 
 def sub_horizontal(a: List, b: List, c: List) -> None:
     for i in range(ROW):
-        for j in unroll(range(COL)):
+        for j in range(COL):
             c[i * COL + j] = a[i * COL + j] - b[i]
 
 
@@ -65,14 +63,6 @@ def matmult(a: List, b: List, col: int8, c: List) -> None:
         for j in range(ROW):
             for k in unroll(range(COL)):
                 c[i * COL + j] += a[i * COL + k] * b[k * COL + j]
-
-def matmult_float(a: List, b: List, col: int8, c: List) -> None:
-    for i in range(col):
-        for j in range(ROW):
-            for k in unroll(range(COL)):
-                a_signed = a[i * COL + k]
-                b_signed = b[k * COL + j]
-                c[i * COL + j] += float.mult(a_signed, b_signed)
 
 
 def sqrt(a: List, c: List) -> None:
@@ -105,7 +95,6 @@ def slice_by_array(a: List, b: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[i * COL + j] = a[b[i * COL + j]]
-
 
 
 def slice_by_tuple(a: List, b: List, c: List, d: List) -> None:
@@ -165,104 +154,61 @@ def mean_axis_1(a: List, c: List) -> None:
         c[i] = c[i] // ROW
 
 
-def linalg_eigh(
-    A: List, eigenvalues: List, eigenvectors: List
-) -> None:  # can use only symmetric matrix
-    max_iter = 1000
-    tol = 1
+# def linalg_eigh(A: List, eigenvalues: List, eigenvectors: List): # can use only symmetric matrix
+#     max_iter = 1000
+#     tol = 1e-8
 
-    Q = [0] * (LEN)
-    R = [0] * (LEN)
-    linalg_qr(A, Q, R)
-    V = [0] * (LEN)
+#     Q = [0] * (LEN)
+#     R = [0] * (LEN)
+#     linalg_qr(A, Q, R)
+#     V = [0] * (LEN)
 
-    for i in unroll(range(ROW)):
-        V[i * ROW + i] = 1
-    diff = 2
-    while max_iter > 0:
-        A_new = [0] * (LEN)
-        matmult_float(R, Q, ROW, A_new)
-        A_diff = [0] * (LEN)
-        sub(A_new, A, A_diff)
-        diff = linalg_norm(A_diff)
-        print("diff: ", diff)
-        if diff < tol:
-            max_iter = 0
-        else:
-            for i in unroll(range(LEN)):
-                A[i] = A_new[i]
-            linalg_qr(A, Q, R)
-            V_tmp = [0] * (LEN)
-            matmult_float(V, Q, ROW, V_tmp)
-            for i in unroll(range(LEN)):
-                V[i] = V_tmp[i]
-            max_iter -= 1
-    for i in unroll(range(ROW)):
-        eigenvalues[i] = A[i * COL + i]
-    for i in unroll(range(LEN)):
-        eigenvectors[i] = V[i]
-        print("eigenvectors: ", eigenvectors[i])
+#     for i in unroll(range(ROW)):
+#         V[i * ROW + i] = 1
+#     for _ in range(max_iter):
+#         A_new = [0] * (LEN)
+#         matmult(R, Q, ROW, A_new)
+#         diff = linalg_norm(A_new - A)
+#         if diff < tol:
+#             break
+#         A = A_new
+#         Q, R = linalg_qr(A)
+#         matmult(V, Q, ROW, V)
+#     for i in unroll(range(ROW)):
+#         eigenvalues[i] = A[i * ROW + i]
+#     for i in range(ROW):
+#         for j in unroll(range(ROW)):
+#             eigenvectors[i * ROW + j] = V[i * ROW + j]
 
-    # 固有値を昇順にソート
-    idx = [0] * ROW
-    list_linalg.argsort(eigenvalues, idx)
-    eigenvalues_tmp = [0] * ROW
-    list_linalg.slice_by_array(eigenvalues, idx, eigenvalues_tmp)
-    for i in unroll(range(ROW)):
-        eigenvalues[i] = eigenvalues_tmp[i]
-    indexes = [0] * ROW
-    for i in unroll(range(ROW)):
-        indexes[i] = i
-    eigenvectors_tmp = [0] * LEN
-    slice_by_tuple(eigenvectors, indexes, idx, eigenvectors_tmp)
-    for i in unroll(range(LEN)):
-        eigenvectors[i] = eigenvectors_tmp[i]
+#     # 固有値を昇順にソート
+#     idx = np.argsort(eigenvalues)
+#     eigenvalues = eigenvalues[idx]
+#     eigenvectors = eigenvectors[:, idx]
 
 
-def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
-    for j in range(ROW):
-        v: List[int32] = [-1] * ROW
-        r_signed: int32 = 0
-        q_signed: int32 = 0
-        a_signed: int32 = 0
-        v_signed: int32 = 0
-        for i in unroll(range(ROW)):
-            v[i] = A[i * COL + j]
+# def linalg_qr(A: List, Q: List, R: List):
+#     # Q = np.zeros((m, n))
+#     # R = np.zeros((n, n))
 
-        for i in range(j):
-            R[i * COL + j] = 0
-            for k in range(ROW):
-                q_signed = Q[k * COL + i]
-                a_signed = A[k * COL + j]
-                R[i * COL + j] += float.mult(q_signed, a_signed)
-            v2: List[int32] = [-1] * ROW
-            for k in range(ROW):
-                q_signed = Q[k * COL + i]
-                r_signed = R[i * COL + j]
-                v2[k] = float.mult(q_signed, r_signed)
-            list_linalg.sub(v, v2, v)
+#     for j in range(ROW):
+#         v = A[:, j]
 
-        R[j * COL + j] = list_linalg.linalg_norm(v)
-        for i in unroll(range(ROW)):
-            v_signed = v[i]
-            r_signed = R[j * COL + j]
-            Q[i * COL + j] = float.div(v_signed, r_signed)
+#         for i in range(j):
+#             R[i, j] = 0
+#             for k in unroll(range(ROW)):
+#                 R[i, j] += Q[k, i] * A[k, j]
+#             v = v - R[i, j] * Q[:, i]
+
+#         R[j, j] = np.linalg.norm(v)
+#         Q[:, j] = v / R[j, j]
 
 
 def linalg_norm(A: List) -> int32:
     s = 0
-    A_signed: int32 = 0
-    for i in range(LEN):
-        A_signed = A[i]
-        A2 = float.mult(A_signed, A_signed)
-        s += A2
+    for i in unroll(range(LEN)):
+        s += A[i] * A[i]
     # Newton's method
     x = s
-    if x <= 0:
-        return 0
     for _ in range(10):
-        x2 = float.mult(x, x)
-        x3 = x2 - s
-        x4 = x << 1
-        x = x - float.div(x3, x4)
+        x = x - (x * x - s) // (2 * x)
     return x
