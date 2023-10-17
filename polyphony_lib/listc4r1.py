@@ -3,8 +3,8 @@ import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
-LEN = 5
-PRECISION = 48
+LEN = 4
+PRECISION = 24
 
 
 def transpose(a: List, c: List) -> None:
@@ -27,7 +27,7 @@ def sub(a: List, b: List, c: List) -> None:
         c[i] = a[i] - b[i]
 
 
-def sub_scalar(a: List, b: int64, c: List) -> None:
+def sub_scalar(a: List, b: int32, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b
 
@@ -57,7 +57,7 @@ def sqrt(a: List, c: List) -> None:
         c[i] = x
 
 
-def append(a: List, item: int64, c: List) -> None:
+def append(a: List, item: int32, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i]
     c[len(a)] = item
@@ -79,30 +79,30 @@ def slice_by_array(a: List, b: List, c: List) -> None:
         c[i] = a[b[i]]
 
 
-def mean(a: List) -> int64:
+def mean(a: List) -> int32:
     s = 0
     for i in range(LEN):
         s += a[i]
     return s // LEN
 
 
-def linalg_norm(A: List) -> int64:
-    s: int64 = 0
-    A_signed: int64 = 0
+def linalg_norm(A: List) -> int32:
+    s: int32 = 0
+    A_signed: int32 = 0
     for i in range(LEN):
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
     # Newton's method
-    x: int128 = s
+    x: int64 = s
     if x == 0:
         return 0
     count: int8 = 100
     while count > 0:
-        x2: int128 = x * x >> PRECISION
-        x3: int128 = (x2 - s) << PRECISION
-        x4: int128 = x << 1
-        x5: int128 = x3 // x4
+        x2: int64 = x * x >> PRECISION
+        x3: int64 = (x2 - s) << PRECISION
+        x4: int64 = x << 1
+        x5: int64 = x3 // x4
         if x5 < 10 and x5 > -10:
             count = 0
         else:

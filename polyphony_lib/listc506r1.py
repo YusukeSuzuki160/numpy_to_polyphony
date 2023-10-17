@@ -3,7 +3,7 @@ import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
-LEN = 5
+LEN = 506
 PRECISION = 48
 
 
@@ -17,7 +17,7 @@ def add(a: List, b: List, c: List) -> None:
         c[i] = a[i] + b[i]
 
 
-def add_scalar(a: List, b: int32, c: List) -> None:
+def add_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b
 
@@ -81,7 +81,7 @@ def slice_by_array(a: List, b: List, c: List) -> None:
 
 def mean(a: List) -> int64:
     s = 0
-    for i in range(LEN):
+    for i in unroll(range(LEN)):
         s += a[i]
     return s // LEN
 
@@ -103,7 +103,7 @@ def linalg_norm(A: List) -> int64:
         x3: int128 = (x2 - s) << PRECISION
         x4: int128 = x << 1
         x5: int128 = x3 // x4
-        if x5 < 10 and x5 > -10:
+        if x5 < 100 and x5 > -100:
             count = 0
         else:
             count -= 1

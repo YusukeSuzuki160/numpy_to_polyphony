@@ -9,7 +9,7 @@ class NpLibGenerator: # run at the super directory of polyphony-numpy
         self.import_stm = 'from polyphony.typing import int8, int16, int32, int64, uint8, uint16, uint32, uint64, List, Tuple\nfrom polyphony.timing import clkfence, clksleep\n\n\n'
         self.func_list = []
         self.code = ''
-        self.precision = 16
+        self.precision = 48
 
     def generate(self):
         self.generate_import()

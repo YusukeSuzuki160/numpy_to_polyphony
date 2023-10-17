@@ -1,10 +1,10 @@
 # This is calclations for 1d list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
-from polyphony.typing import List, int8, int32, int64, uint32
+from polyphony.typing import List, int8, int32, int64, int128
 
 LEN = 10
-PRECISION = 16
+PRECISION = 48
 
 
 def transpose(a: List, c: List) -> None:
@@ -17,7 +17,7 @@ def add(a: List, b: List, c: List) -> None:
         c[i] = a[i] + b[i]
 
 
-def add_scalar(a: List, b: int32, c: List) -> None:
+def add_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b
 
@@ -27,7 +27,7 @@ def sub(a: List, b: List, c: List) -> None:
         c[i] = a[i] - b[i]
 
 
-def sub_scalar(a: List, b: int32, c: List) -> None:
+def sub_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b
 
@@ -57,7 +57,7 @@ def sqrt(a: List, c: List) -> None:
         c[i] = x
 
 
-def append(a: List, item: int32, c: List) -> None:
+def append(a: List, item: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i]
     c[len(a)] = item
@@ -79,58 +79,36 @@ def slice_by_array(a: List, b: List, c: List) -> None:
         c[i] = a[b[i]]
 
 
-def mean(a: List) -> int32:
+def mean(a: List) -> int64:
     s = 0
     for i in unroll(range(LEN)):
         s += a[i]
     return s // LEN
 
 
-
-# def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
-#     for j in range(ROW):
-#         v: List[int32] = [-1] * ROW
-#         r_signed: int32 = 0
-#         q_signed: int32 = 0
-#         a_signed: int32 = 0
-#         v_signed: int32 = 0
-#         for i in unroll(range(ROW)):
-#             v[i] = A[i * COL + j]
-
-#         for i in range(j):
-#             R[i * COL + j] = 0
-#             for k in range(ROW):
-#                 q_signed = Q[k * COL + i]
-#                 a_signed = A[k * COL + j]
-#                 R[i * COL + j] += float.mult(q_signed, a_signed)
-#             v2: List[int32] = [-1] * ROW
-#             for k in range(ROW):
-#                 q_signed = Q[k * COL + i]
-#                 r_signed = R[i * COL + j]
-#                 v2[k] = float.mult(q_signed, r_signed)
-#             sub(v, v2, v)
-
-#         R[j * COL + j] = linalg_norm(v)
-#         for i in unroll(range(ROW)):
-#             v_signed = v[i]
-#             r_signed = R[j * COL + j]
-#             Q[i * COL + j] = float.div(v_signed, r_signed)
-
-
-def linalg_norm(A: List) -> int32:
-    s = 0
-    A_signed: int32 = 0
+def linalg_norm(A: List) -> int64:
+    s: int64 = 0
+    A_signed: int64 = 0
     for i in range(LEN):
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
     # Newton's method
-    x = s
-    if x <= 0:
+    x: int128 = s
+    if x == 0:
         return 0
-    for _ in range(10):
-        x2 = float.mult(x, x)
-        x3 = x2 - s
-        x4 = x << 1
-        x = x - float.div(x3, x4)
-    return x
+    count: int8 = 100
+    while count > 0:
+        x2: int128 = x * x >> PRECISION
+        x3: int128 = (x2 - s) << PRECISION
+        x4: int128 = x << 1
+        x5: int128 = x3 // x4
+        if x5 < 100 and x5 > -100:
+            count = 0
+        else:
+            count -= 1
+            x -= x5
+    if x < 0:
+        return -x
+    else:
+        return x

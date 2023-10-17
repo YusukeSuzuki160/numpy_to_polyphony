@@ -42,7 +42,7 @@ class PolyphonyExecuter:
         self.logger.debug("PythonGenerator(self.shapes).generate() called")
         os.system(self.command)
         self.logger.debug("command: " + self.command)
-        VerilogGenerator().generate()
+        VerilogGenerator(self.shapes).generate()
         self.logger.debug("VerilogGenerator().generate() called")
         # self.rewrite_top()
         self.logger.debug("rewrite_top() called")

@@ -6,9 +6,14 @@ lib_horizonal_file = "list_horizonal.py"
 lib_vertical_file = "list_vertical.py"
 dir = os.path.dirname(__file__)
 
+generated = []
+
 
 def generate_fixed_lib(col: int, row: int, lib_dir: str = dir) -> None:
     filename = "list" + "c" + str(col) + "r" + str(row) + ".py"
+    if filename in generated:
+        return
+    generated.append(filename)
     filepath = os.path.join(lib_dir, filename)
     if row == 1:
         code = open(os.path.join(dir, lib_horizonal_file)).read()

@@ -1,9 +1,10 @@
+import listc1r1 as list_linalg
 # This is calclations for 1d list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
-LEN = 5
+LEN = 3
 PRECISION = 48
 
 
@@ -27,25 +28,25 @@ def sub(a: List, b: List, c: List) -> None:
         c[i] = a[i] - b[i]
 
 
-def sub_scalar(a: List, b: int64, c: List) -> None:
+def sub_scalar(a: List, b: int32, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b
 
 
 def matmult(a: List, b: List, col: int8, c: List) -> None:
     for i in range(col):
-        for k in unroll(range(LEN)):
-            a_signed = a[k]
-            b_signed = b[k * LEN + i]
-            c[i] += a_signed * b_signed
+        for j in unroll(range(LEN)):
+            a_signed = a[j]
+            b_signed = b[j * LEN + i]
+            c[i] = a_signed * b_signed
 
 
 def matmult_float(a: List, b: List, col: int8, c: List) -> None:
     for i in range(col):
-        for k in unroll(range(LEN)):
-            a_signed = a[k]
-            b_signed = b[k * LEN + i]
-            c[i] += float.mult(a_signed, b_signed)
+        for j in unroll(range(LEN)):
+            a_signed = a[j]
+            b_signed = b[j * LEN + i]
+            c[i] = float.mult(a_signed, b_signed)
 
 
 def sqrt(a: List, c: List) -> None:

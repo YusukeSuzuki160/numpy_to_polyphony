@@ -1,13 +1,13 @@
-import listc14r1 as list_linalg
+import listc20r1 as list_linalg
 # This is calclations for list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
-from polyphony.typing import List, int8, int32, int64, uint32
+from polyphony.typing import List, int8, int32, int64, int128
 
 ROW = 10
-COL = 14
+COL = 20
 LEN = ROW * COL
-PRECISION = 24
+PRECISION = 48
 
 
 def transpose(a: List, c: List) -> None:
@@ -21,7 +21,7 @@ def add(a: List, b: List, c: List) -> None:
         c[i] = a[i] + b[i]
 
 
-def add_scalar(a: List, b: int32, c: List) -> None:
+def add_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b
 
@@ -43,7 +43,7 @@ def sub(a: List, b: List, c: List) -> None:
         c[i] = a[i] - b[i]
 
 
-def sub_scalar(a: List, b: int32, c: List) -> None:
+def sub_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b
 
@@ -64,8 +64,8 @@ def matmult(a: List, b: List, col: int8, c: List) -> None:
     for i in range(col):
         for j in range(COL):
             for k in unroll(range(ROW)):
-                a_signed = a[k * COL + j]
-                b_signed = b[j * col + i]
+                a_signed: int64 = a[k * COL + j]
+                b_signed: int64 = b[j * col + i]
                 c[k * col + i] += a_signed * b_signed
 
 
@@ -73,8 +73,8 @@ def matmult_float(a: List, b: List, col: int8, c: List) -> None:
     for i in range(col):
         for j in range(COL):
             for k in unroll(range(ROW)):
-                a_signed = a[k * COL + j]
-                b_signed = b[j * col + i]
+                a_signed: int64 = a[k * COL + j]
+                b_signed: int64 = b[j * col + i]
                 c[k * col + i] += float.mult(a_signed, b_signed)
 
 
@@ -87,7 +87,7 @@ def sqrt(a: List, c: List) -> None:
         c[i] = x
 
 
-def append(a: List, item: int32, c: List) -> None:
+def append(a: List, item: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i]
     c[len(a)] = item
@@ -101,7 +101,10 @@ def argsort(a: List, c: List) -> None:
         for j in range(COL):
             for k in range(COL - 1):
                 if a[i * COL + c[i * COL + k]] > a[i * COL + c[i * COL + k + 1]]:
-                    c[i * COL + k], c[i * COL + k + 1] = c[i * COL + k + 1], c[i * COL + k]
+                    c[i * COL + k], c[i * COL + k + 1] = (
+                        c[i * COL + k + 1],
+                        c[i * COL + k],
+                    )
 
 
 def slice_by_array(a: List, b: List, c: List) -> None:
@@ -110,10 +113,10 @@ def slice_by_array(a: List, b: List, c: List) -> None:
             c[i * COL + j] = a[b[i * COL + j]]
 
 
-def slice_by_tuple(a: List, b: List, c: List, d: List) -> None:
+def slice_by_tuple(a: List, b: List, c: List, col: int8, d: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
-            index = b[i] * COL + c[j]
+            index = b[i] * col + c[j]
             d[i * COL + j] = a[index]
 
 
@@ -134,12 +137,12 @@ def cov(A: List, rowvar: bool, c: List) -> None:
     a_T = [0] * LEN
     transpose(a, a_T)
     matmult_float(a, a_T, ROW, c)
-    for i in unroll(range(LEN)):
-        c_signed: int32 = c[i]
+    for i in unroll(range(ROW * ROW)):
+        c_signed: int64 = c[i]
         c[i] = c_signed // (COL - 1)
 
 
-def mean(a: List) -> int32:
+def mean(a: List) -> int64:
     s = 0
     for i in unroll(range(LEN)):
         s += a[i]
@@ -151,7 +154,7 @@ def mean_axis_0(a: List, c: List) -> None:
         for j in unroll(range(COL)):
             c[j] += a[i * COL + j]
     for i in unroll(range(COL)):
-        c_signed: int32 = c[i]
+        c_signed: int64 = c[i]
         c[i] = c_signed // ROW
 
 
@@ -160,7 +163,7 @@ def mean_axis_1(a: List, c: List) -> None:
         for j in unroll(range(ROW)):
             c[j] += a[j * COL + i]
     for i in unroll(range(ROW)):
-        c_signed: int32 = c[i]
+        c_signed: int64 = c[i]
         c[i] = c_signed // COL
 
 
@@ -174,14 +177,14 @@ def linalg_eigh(
         for i in range(ROW):
             for j in range(COL):
                 m_signed = m[i * COL + j]
-                if i != j and (m_signed > 1000 or m_signed < -1000):
+                if i != j and (m_signed > 100 or m_signed < -100):
                     return False
         return True
 
     V = [0] * (LEN)
 
     for i in unroll(range(ROW)):
-        V[i * ROW + i] = 65536
+        V[i * ROW + i] = 281474976710656
     while max_iter > 0:
         Q = [0] * (LEN)
         R = [0] * (LEN)
@@ -214,17 +217,17 @@ def linalg_eigh(
     for i in unroll(range(ROW)):
         indexes[i] = i
     eigenvectors_tmp = [0] * LEN
-    slice_by_tuple(eigenvectors, indexes, idx, eigenvectors_tmp)
+    slice_by_tuple(eigenvectors, indexes, idx, COL, eigenvectors_tmp)
     for i in unroll(range(LEN)):
         eigenvectors[i] = eigenvectors_tmp[i]
 
 
-def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
+def linalg_qr(A: List, Q: List, R: List) -> None:
     for j in range(COL):
-        v: List[int32] = [0] * ROW
-        r_signed: int32 = 0
-        q_signed: int32 = 0
-        v_signed: int32 = 0
+        v: List = [0] * ROW
+        r_signed: int64 = 0
+        q_signed: int64 = 0
+        v_signed: int64 = 0
         for i in unroll(range(ROW)):
             v[i] = A[i * COL + j]
         for i in range(j):
@@ -233,7 +236,7 @@ def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
                 q_signed = Q[k * COL + i]
                 v_signed = v[k]
                 R[i * COL + j] += float.mult(q_signed, v_signed)
-        v2: List[int32] = [0] * ROW
+        v2: List = [0] * ROW
         for i in range(j):
             for k in range(ROW):
                 q_signed = Q[k * COL + i]
@@ -251,24 +254,29 @@ def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
                 Q[i * COL + j] = float.div(v_signed, r_signed)
 
 
-def linalg_norm(A: List) -> int32:
-    s: int32 = 0
-    A_signed: int32 = 0
+def linalg_norm(A: List) -> int64:
+    s: int64 = 0
+    A_signed: int64 = 0
     for i in range(LEN):
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
     # Newton's method
-    x: int64 = s
-    count = 100
+    x: int128 = s
+    if x == 0:
+        return 0
+    count: int8 = 100
     while count > 0:
-        x2: int64 = x * x >> PRECISION
-        x3: int64 = (x2 - s) << PRECISION
-        x4: int64 = x << 1
-        x5: int64 = x3 // x4
-        if x5 < 10 and x5 > -10:
+        x2: int128 = x * x >> PRECISION
+        x3: int128 = (x2 - s) << PRECISION
+        x4: int128 = x << 1
+        x5: int128 = x3 // x4
+        if x5 < 100 and x5 > -100:
             count = 0
         else:
             count -= 1
             x -= x5
-    return x
+    if x < 0:
+        return -x
+    else:
+        return x

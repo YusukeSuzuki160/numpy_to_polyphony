@@ -1,13 +1,13 @@
-import listc14r1 as list_linalg
+import listc3r1 as list_linalg
 # This is calclations for list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, uint32
 
-ROW = 10
-COL = 14
+ROW = 4
+COL = 3
 LEN = ROW * COL
-PRECISION = 24
+PRECISION = 16
 
 
 def transpose(a: List, c: List) -> None:
@@ -134,9 +134,8 @@ def cov(A: List, rowvar: bool, c: List) -> None:
     a_T = [0] * LEN
     transpose(a, a_T)
     matmult_float(a, a_T, ROW, c)
-    for i in unroll(range(LEN)):
-        c_signed: int32 = c[i]
-        c[i] = c_signed // (COL - 1)
+    for i in range(LEN):
+        c[i] = c[i] // (COL - 1)
 
 
 def mean(a: List) -> int32:
@@ -183,6 +182,7 @@ def linalg_eigh(
     for i in unroll(range(ROW)):
         V[i * ROW + i] = 65536
     while max_iter > 0:
+        print("max_iter: ", max_iter)
         Q = [0] * (LEN)
         R = [0] * (LEN)
         linalg_qr(A, Q, R)
@@ -224,27 +224,29 @@ def linalg_qr(A: List[int32], Q: List[int32], R: List[int32]) -> None:
         v: List[int32] = [0] * ROW
         r_signed: int32 = 0
         q_signed: int32 = 0
+        a_signed: int32 = 0
         v_signed: int32 = 0
         for i in unroll(range(ROW)):
             v[i] = A[i * COL + j]
+
         for i in range(j):
             R[i * COL + j] = 0
             for k in range(ROW):
                 q_signed = Q[k * COL + i]
                 v_signed = v[k]
                 R[i * COL + j] += float.mult(q_signed, v_signed)
-        v2: List[int32] = [0] * ROW
+        v2: List[int32] = [-1] * ROW
         for i in range(j):
             for k in range(ROW):
                 q_signed = Q[k * COL + i]
                 r_signed = R[i * COL + j]
                 v2[k] = float.mult(q_signed, r_signed)
-            list_linalg.sub(v, v2, v)
-        norm_v = list_linalg.linalg_norm(v)
-        if norm_v == 0:
+        list_linalg.sub(v, v2, v)
+
+        R[j * COL + j] = list_linalg.linalg_norm(v)
+        if R[j * COL + j] < 10 and R[j * COL + j] > -10:
             continue
         else:
-            R[j * COL + j] = norm_v
             for i in unroll(range(ROW)):
                 v_signed = v[i]
                 r_signed = R[j * COL + j]
@@ -259,16 +261,12 @@ def linalg_norm(A: List) -> int32:
         A2 = float.mult(A_signed, A_signed)
         s += A2
     # Newton's method
-    x: int64 = s
-    count = 100
-    while count > 0:
-        x2: int64 = x * x >> PRECISION
-        x3: int64 = (x2 - s) << PRECISION
-        x4: int64 = x << 1
-        x5: int64 = x3 // x4
-        if x5 < 10 and x5 > -10:
-            count = 0
-        else:
-            count -= 1
-            x -= x5
+    x: int32 = s
+    if x <= 0:
+        return 0
+    for _ in range(10):
+        x2: int32 = float.mult(x, x)
+        x3: int32 = x2 - s
+        x4: int32 = x << 1
+        x = x - float.div(x3, x4)
     return x

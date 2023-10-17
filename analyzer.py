@@ -197,6 +197,8 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
                         assert isinstance(shape, list)
                         while isinstance(element, List):
                             element = element.elts[0]
+                        if isinstance(element, ast.UnaryOp):
+                            element = element.operand
                         if isinstance(element, Complex):
                             dtype = "complex128"
                         else:
@@ -513,6 +515,8 @@ class TypeAnalyzer(ast.NodeVisitor):
                         assert isinstance(shape, list)
                         while isinstance(element, List):
                             element = element.elts[0]
+                        if isinstance(element, ast.UnaryOp):
+                            element = element.operand
                         if isinstance(element, Complex):
                             dtype = "complex128"
                         else:
@@ -579,11 +583,11 @@ class TypeAnalyzer(ast.NodeVisitor):
                         if rowvar != []:
                             rowvar = rowvar[0].value.value
                             if rowvar == True:
-                                shape = (shape[0], shape[0])
+                                shape = [shape[0], shape[0]]
                             else:
-                                shape = (shape[1], shape[1])
+                                shape = [shape[1], shape[1]]
                         else:
-                            shape = (shape[1], shape[1])
+                            shape = [shape[1], shape[1]]
                         append_dict["shape"] = shape
                         self.np_list[arg_name] = append_dict
 
@@ -674,6 +678,7 @@ class TypeAnalyzer(ast.NodeVisitor):
                         append_dict_W["scope"] = func_name
                         shape_W = append_dict_W["shape"]
                         shape_W = [shape_W[0], 1]
+                        append_dict_W["shape"] = shape_W
                         append_dict_V = copy.deepcopy(self.np_list[id_name])
                         append_dict_V["scope"] = func_name
                         self.np_list[arg_W] = append_dict_W
@@ -810,7 +815,11 @@ class TypeAnalyzer(ast.NodeVisitor):
                 if isinstance(left, ast.Num):
                     left = left.n
                 elif isinstance(left, ast.Name):
-                    left = self.np_list[func_name + "." + left.id]["shape"]
+                    id_name = func_name + "." + left.id
+                    if id_name in self.np_list.keys():
+                        left = self.np_list[id_name]["shape"]
+                    else:
+                        left = 1
                 elif isinstance(left, ast.Slice):
                     if left.lower is None:
                         lower = 0
@@ -831,7 +840,11 @@ class TypeAnalyzer(ast.NodeVisitor):
                 if isinstance(right, ast.Num):
                     right = right.n
                 elif isinstance(right, ast.Name):
-                    right = self.np_list[func_name + "." + right.id]["shape"]
+                    id_name = func_name + "." + right.id
+                    if id_name in self.np_list.keys():
+                        right = self.np_list[id_name]["shape"]
+                    else:
+                        right = 1
                 elif isinstance(right, ast.Slice):
                     if right.lower is None:
                         lower = 0
@@ -878,26 +891,27 @@ class FunctionAnalyzer(ast.NodeVisitor):
                 func_name = node.name
                 return_id = func_name + "." + node.body[-1].value.id
                 if return_id in self.np_list:
-                    self.func_return[func_name] = self.np_list[return_id]
+                    self.func_return[func_name] = [self.np_list[return_id]]
                 elif return_id in self.float_list:
-                    self.func_return[func_name] = self.float_list[return_id]
+                    self.func_return[func_name] = [self.float_list[return_id]]
                 elif return_id in self.complex_list:
-                    self.func_return[func_name] = self.complex_list[return_id]
+                    self.func_return[func_name] = [self.complex_list[return_id]]
                 elif return_id in self.array_list:
-                    self.func_return[func_name] = self.array_list[return_id]
+                    self.func_return[func_name] = [self.array_list[return_id]]
             elif isinstance(node.body[-1].value, ast.Tuple):
                 func_name = node.name
+                self.func_return[func_name] = []
                 for elt in node.body[-1].value.elts:
                     assert isinstance(elt, Name)
                     return_id = func_name + "." + elt.id
                     if return_id in self.np_list:
-                        self.func_return[func_name] = self.np_list[return_id]
+                        self.func_return[func_name].append(self.np_list[return_id])
                     elif return_id in self.float_list:
-                        self.func_return[func_name] = self.float_list[return_id]
+                        self.func_return[func_name].append(self.float_list[return_id])
                     elif return_id in self.complex_list:
-                        self.func_return[func_name] = self.complex_list[return_id]
+                        self.func_return[func_name].append(self.complex_list[return_id])
                     elif return_id in self.array_list:
-                        self.func_return[func_name] = self.array_list[return_id]
+                        self.func_return[func_name].append(self.array_list[return_id])
         self.generic_visit(node)
 
 
@@ -927,7 +941,7 @@ class FunctionCallAnalyzer(ast.NodeVisitor):
                 if node.value.func.id in self.func_return.keys():
                     if isinstance(node.targets[0], Name):
                         dist_name = node.targets[0].id
-                        src_type = self.func_return[node.value.func.id]
+                        src_type = self.func_return[node.value.func.id][0]
                         func_name = self.current_func
                         dist_name = func_name + "." + dist_name
                         if src_type.get("shape") is not None:
@@ -941,10 +955,10 @@ class FunctionCallAnalyzer(ast.NodeVisitor):
                                 self.complex_list[dist_name] = src_type
                                 self.complex_list[dist_name]["scope"] = func_name
                     elif isinstance(node.targets[0], ast.Tuple):
-                        for elt in node.targets[0].elts:
+                        for i, elt in enumerate(node.targets[0].elts):
                             if isinstance(elt, Name):
                                 dist_name = elt.id
-                                src_type = self.func_return[node.value.func.id]
+                                src_type = self.func_return[node.value.func.id][i]
                                 func_name = self.current_func
                                 dist_name = func_name + "." + dist_name
                                 if src_type.get("shape") is not None:

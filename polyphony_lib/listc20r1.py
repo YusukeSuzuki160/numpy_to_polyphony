@@ -3,7 +3,7 @@ import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
-LEN = 5
+LEN = 20
 PRECISION = 48
 
 

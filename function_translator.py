@@ -74,14 +74,15 @@ class FunctionTranslator(ast.NodeTransformer):
                     shape = self.np_list[arg_name]["shape"]
                     col = shape[1]
                     row = shape[0]
+                    rowvar = [kw for kw in node.keywords if kw.arg == "rowvar"]
+                    if rowvar != []:
+                        if rowvar[0].value.value == False:
+                            col = shape[0]
+                            row = shape[1]
+                        rowvar = rowvar[0].value
                     attr_name = "list" + "c" + str(col) + "r" + str(row)
                     self.lib_set.add(attr_name)
                     self.shapes.add((col, row))
-                    rowvar = [kw for kw in node.keywords if kw.arg == "rowvar"]
-                    if rowvar != []:
-                        rowvar = rowvar[0].value
-                    else:
-                        rowvar = ast.NameConstant(value=True, kind=None)
                     return ast.copy_location(
                         Call(
                             func=Attribute(
@@ -417,6 +418,7 @@ class FunctionTranslator(ast.NodeTransformer):
                                 node.value.value,
                                 Name(id=left_arg, ctx=Load()),
                                 Name(id=right_arg, ctx=Load()),
+                                ast.Constant(value=col, kind=None),
                             ],
                             keywords=[],
                         ),
