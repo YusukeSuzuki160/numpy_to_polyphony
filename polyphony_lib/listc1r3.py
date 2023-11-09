@@ -100,15 +100,15 @@ def linalg_norm(A: List) -> int64:
         return 0
     count: int8 = 100
     while count > 0:
-        x2: int128 = x * x >> PRECISION
-        x3: int128 = (x2 - s) << PRECISION
-        x4: int128 = x << 1
-        x5: int128 = x3 // x4
-        if x5 < 10 and x5 > -10:
+        x_2: int128 = x * x >> PRECISION
+        x_3: int128 = (x_2 - s) << PRECISION
+        x_4: int128 = x << 1
+        x_5: int128 = x_3 // x_4
+        if x_5 < 10 and x_5 > -10:
             count = 0
         else:
             count -= 1
-            x -= x5
+            x -= x_5
     if x < 0:
         return -x
     else:

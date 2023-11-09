@@ -1,11 +1,11 @@
-import listc10r1 as list_linalg
+import listc5r1 as list_linalg
 # This is calclations for list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
-ROW = 5
-COL = 10
+ROW = 2
+COL = 5
 LEN = ROW * COL
 PRECISION = 48
 
@@ -139,16 +139,11 @@ def cov(A: List, rowvar: bool, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             a[i * COL + j] -= a_mean[i]
-    a_T = [0] * LEN
-    for i in range(ROW):
-        for j in range(COL):
-            a_T[j * ROW + i] = a[i * COL + j]
-    # matmult_float(a, a_T, ROW, c)
     for i in range(ROW):
         for j in range(COL):
             for k in unroll(range(ROW)):
                 a_signed: int64 = a[k * COL + j]
-                b_signed: int64 = a_T[j * ROW + i]
+                b_signed: int64 = a[i * COL + j]
                 c[k * ROW + i] += float.mult(a_signed, b_signed)
     for i in unroll(range(ROW * ROW)):
         c_signed: int64 = c[i]
@@ -185,18 +180,18 @@ def linalg_eigh(
 ) -> None:  # can use only symmetric matrix
     max_iter = 100
 
-    def is_diagonal(m: List) -> bool:
-        # 行列が対角であるかのチェック
-        for i in range(ROW):
-            for j in range(COL):
-                m_signed = m[i * COL + j]
-                if i != j and (m_signed > 100 or m_signed < -100):
-                    return False
-        return True
+    # def is_diagonal(m: List) -> bool:
+    #     # 行列が対角であるかのチェック
+    #     for i in range(ROW):
+    #         for j in range(COL):
+    #             m_signed = m[i * COL + j]
+    #             if i != j and (m_signed > 100 or m_signed < -100):
+    #                 return False
+    #     return True
 
     V = [0] * (LEN)
 
-    for i in unroll(range(ROW)):
+    for i in range(ROW):
         V[i * ROW + i] = 281474976710656
     while max_iter > 0:
         Q = [0] * (LEN)
@@ -204,21 +199,21 @@ def linalg_eigh(
         linalg_qr(A, Q, R)
         A_new = [0] * (LEN)
         matmult_float(R, Q, ROW, A_new)
-        for i in unroll(range(LEN)):
+        for i in range(LEN):
             A[i] = A_new[i]
         V_tmp = [0] * (LEN)
         matmult_float(V, Q, ROW, V_tmp)
-        for i in unroll(range(LEN)):
+        for i in range(LEN):
             V[i] = V_tmp[i]
-        if is_diagonal(A):
-            max_iter = 0
-        else:
-            max_iter -= 1
-    for i in unroll(range(ROW)):
+        # if is_diagonal(A):
+        #     max_iter = 0
+        # else:
+        #     max_iter -= 1
+        max_iter -= 1
+    for i in range(ROW):
         eigenvalues[i] = A[i * COL + i]
-    for i in unroll(range(LEN)):
+    for i in range(LEN):
         eigenvectors[i] = V[i]
-
     # 固有値を昇順にソート
     idx = [0] * ROW
     list_linalg.argsort(eigenvalues, idx)
@@ -237,8 +232,8 @@ def linalg_eigh(
 
 def linalg_qr(A: List, Q: List, R: List) -> None:
     v: List = [0] * ROW
-    v2: List = [0] * ROW
-    v3: List = [0] * ROW
+    v_2: List = [0] * ROW
+    # v_3: List = [0] * ROW
     r_signed: int64 = 0
     q_signed: int64 = 0
     v_signed: int64 = 0
@@ -255,9 +250,9 @@ def linalg_qr(A: List, Q: List, R: List) -> None:
             for k in range(ROW):
                 q_signed = Q[k * COL + i]
                 r_signed = R[i * COL + j]
-                v2[k] = float.mult(q_signed, r_signed)
+                v_2[k] = float.mult(q_signed, r_signed)
             for k in unroll(range(ROW)):
-                v_signed = v2[k]
+                v_signed = v_2[k]
                 v[k] -= v_signed
         norm_v = list_linalg.linalg_norm(v)
         if norm_v == 0:
@@ -277,21 +272,22 @@ def linalg_norm(A: List) -> int64:
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
+    print("s: ", s)
     # Newton's method
     x: int128 = s
     if x == 0:
         return 0
     count: int8 = 100
     while count > 0:
-        x2: int128 = x * x >> PRECISION
-        x3: int128 = (x2 - s) << PRECISION
-        x4: int128 = x << 1
-        x5: int128 = x3 // x4
-        if x5 < 10 and x5 > -10:
+        x_2: int128 = x * x >> PRECISION
+        x_3: int128 = (x_2 - s) << PRECISION
+        x_4: int128 = x << 1
+        x_5: int128 = x_3 // x_4
+        if x_5 < 10 and x_5 > -10:
             count = 0
         else:
             count -= 1
-            x -= x5
+            x -= x_5
     if x < 0:
         return -x
     else:

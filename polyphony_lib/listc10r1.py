@@ -17,7 +17,7 @@ def add(a: List, b: List, c: List) -> None:
         c[i] = a[i] + b[i]
 
 
-def add_scalar(a: List, b: int64, c: List) -> None:
+def add_scalar(a: List, b: int32, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b
 
@@ -81,7 +81,7 @@ def slice_by_array(a: List, b: List, c: List) -> None:
 
 def mean(a: List) -> int64:
     s = 0
-    for i in unroll(range(LEN)):
+    for i in range(LEN):
         s += a[i]
     return s // LEN
 
@@ -103,7 +103,7 @@ def linalg_norm(A: List) -> int64:
         x3: int128 = (x2 - s) << PRECISION
         x4: int128 = x << 1
         x5: int128 = x3 // x4
-        if x5 < 100 and x5 > -100:
+        if x5 < 10 and x5 > -10:
             count = 0
         else:
             count -= 1

@@ -130,13 +130,21 @@ def cov(A: List, rowvar: bool, c: List) -> None:
         for i in unroll(range(LEN)):
             a[i] = A[i]
     a_mean = [0] * ROW
-    mean_axis_1(a, a_mean)
+    for i in range(COL):
+        for j in unroll(range(ROW)):
+            a_mean[j] += a[j * COL + i]
+    for i in unroll(range(ROW)):
+        a_mean_signed: int64 = a_mean[i]
+        a_mean[i] = a_mean_signed // COL
     for i in range(ROW):
         for j in unroll(range(COL)):
             a[i * COL + j] -= a_mean[i]
-    a_T = [0] * LEN
-    transpose(a, a_T)
-    matmult_float(a, a_T, ROW, c)
+    for i in range(ROW):
+        for j in range(COL):
+            for k in unroll(range(ROW)):
+                a_signed: int64 = a[k * COL + j]
+                b_signed: int64 = a[i * COL + j]
+                c[k * ROW + i] += float.mult(a_signed, b_signed)
     for i in unroll(range(ROW * ROW)):
         c_signed: int64 = c[i]
         c[i] = c_signed // (COL - 1)
@@ -247,6 +255,8 @@ def linalg_qr(A: List, Q: List, R: List) -> None:
                 v_signed = v2[k]
                 v[k] -= v_signed
         norm_v = list_linalg.linalg_norm(v)
+        print("norm_v: ")
+        print(norm_v)
         if norm_v == 0:
             continue
         else:
@@ -264,21 +274,27 @@ def linalg_norm(A: List) -> int64:
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
+    print("s: ", s)
     # Newton's method
     x: int128 = s
     if x == 0:
         return 0
     count: int8 = 100
     while count > 0:
-        x2: int128 = x * x >> PRECISION
-        x3: int128 = (x2 - s) << PRECISION
-        x4: int128 = x << 1
-        x5: int128 = x3 // x4
-        if x5 < 10 and x5 > -10:
+        print("count: ", count)
+        x_2: int128 = x * x >> PRECISION
+        print("x2: ", x_2)
+        x_3: int128 = (x_2 - s) << PRECISION
+        print("x3: ", x_3)
+        x_4: int128 = x << 1
+        print("x4: ", x_4)
+        x_5: int128 = x_3 // x_4
+        print("x5: ", x_5)
+        if x_5 < 10 and x_5 > -10:
             count = 0
         else:
             count -= 1
-            x -= x5
+            x -= x_5
     if x < 0:
         return -x
     else:

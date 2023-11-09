@@ -15,6 +15,7 @@ from hdlmodule import (
 SRC_PATH = os.path.abspath("./numpy_to_polyphony/verilog/") + "/"
 DST_PATH = os.path.abspath("./verilog-code/") + "/"
 PYTHON_PATH = os.path.abspath("./python-code/") + "/"
+POLYPHONY_PATH = os.path.abspath("./polyphony-code/") + "/"
 GENERATE_FILE = ["complex_mult.v", "float_mult.v"]
 LIB_PATH = os.path.abspath("./numpy_to_polyphony/polyphony_lib/") + "/"
 
@@ -33,7 +34,7 @@ class VerilogGenerator:
         self.shapes = shapes
 
     def generate(self) -> None:
-        self.generate_matmult()
+        # self.generate_matmult()
         for filename in GENERATE_FILE:
             src = SRC_PATH + filename
             dst = DST_PATH + filename
@@ -61,9 +62,9 @@ class VerilogGenerator:
                     "matmult_out_b" + str(i), 64, "output wire", signed=True
                 )
             module.add_port("matmult_in_col", 8, "input wire")
-            for i in range(col * row):
+            for i in range(row * row):
                 module.add_port("matmult_in_c" + str(i), 64, "input wire", signed=True)
-            for i in range(col * row):
+            for i in range(row * row):
                 module.add_port(
                     "matmult_out_c" + str(i), 64, "output wire", signed=True
                 )
@@ -86,22 +87,18 @@ class VerilogGenerator:
                     ),
                 )
             module.add_dataflow("idle", input_state)
-            for i in range(col * row):
+            for i in range(row * row):
                 calc = ""
                 for j in range(col):
-                    calc += "a[" + str(i // col * col + j) + "] * "
-                    calc += "b[" + str(i % col + j * col) + "]"
-                    if j != col - 1:
-                        calc += " + "
+                    calc += "a[" + str(i // row * col + j) + "] * "
+                    calc += "b[" + str(i % row + j * row) + "] + "
+                calc = calc[:-3]
                 module.add_dataflow(
                     "calc",
                     HDLNonBlockingAssign(HDLIndexAccess("c", i), calc),
                 )
-            for i in range(col * row):
-                module.add_assign(
-                    "matmult_out_c" + str(i),
-                    HDLIndexAccess("c", i),
-                )
+            for i in range(row * row):
+                module.add_assign("matmult_out_c" + str(i), HDLIndexAccess("c", i))
             module.add_controlflow("idle", "matmult_ready", "calc")
             module.add_controlflow("calc", "1", "fin")
             module.generate()
@@ -123,6 +120,6 @@ class PythonGenerator:
 
     def generate(self) -> None:
         plib.generate(self.shapes)
-        os.system("cp -R " + LIB_PATH + "*" + " " + PYTHON_PATH)
+        os.system("cp -R " + LIB_PATH + "*" + " " + POLYPHONY_PATH)
         self.logger.debug("plib.generate called")
         self.logger.debug("\n")

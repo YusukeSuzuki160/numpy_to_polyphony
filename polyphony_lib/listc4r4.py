@@ -7,7 +7,7 @@ from polyphony.typing import List, int8, int32, int64, int128
 ROW = 4
 COL = 4
 LEN = ROW * COL
-PRECISION = 24
+PRECISION = 48
 
 
 def transpose(a: List, c: List) -> None:
@@ -21,7 +21,7 @@ def add(a: List, b: List, c: List) -> None:
         c[i] = a[i] + b[i]
 
 
-def add_scalar(a: List, b: int32, c: List) -> None:
+def add_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b
 
@@ -87,10 +87,10 @@ def sqrt(a: List, c: List) -> None:
         c[i] = x
 
 
-def append(a: List, item: int32, c: List) -> None:
+def append(a: List, item: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i]
-    c[len(a)] = item
+    c[LEN] = item
 
 
 def argsort(a: List, c: List) -> None:
@@ -122,7 +122,7 @@ def slice_by_tuple(a: List, b: List, c: List, col: int8, d: List) -> None:
 
 def cov(A: List, rowvar: bool, c: List) -> None:
     a = [0] * LEN
-    if rowvar == False:
+    if not rowvar:
         for i in range(ROW):
             for j in unroll(range(COL)):
                 a[i * COL + j] = A[j * ROW + i]
@@ -130,15 +130,23 @@ def cov(A: List, rowvar: bool, c: List) -> None:
         for i in unroll(range(LEN)):
             a[i] = A[i]
     a_mean = [0] * ROW
-    mean_axis_1(a, a_mean)
+    for i in range(COL):
+        for j in unroll(range(ROW)):
+            a_mean[j] += a[j * COL + i]
+    for i in unroll(range(ROW)):
+        a_mean_signed: int64 = a_mean[i]
+        a_mean[i] = a_mean_signed // COL
     for i in range(ROW):
         for j in unroll(range(COL)):
             a[i * COL + j] -= a_mean[i]
-    a_T = [0] * LEN
-    transpose(a, a_T)
-    matmult_float(a, a_T, ROW, c)
+    for i in range(ROW):
+        for j in range(COL):
+            for k in unroll(range(ROW)):
+                a_signed: int64 = a[k * COL + j]
+                b_signed: int64 = a[i * COL + j]
+                c[k * ROW + i] += float.mult(a_signed, b_signed)
     for i in unroll(range(ROW * ROW)):
-        c_signed: int32 = c[i]
+        c_signed: int64 = c[i]
         c[i] = c_signed // (COL - 1)
 
 
@@ -154,7 +162,7 @@ def mean_axis_0(a: List, c: List) -> None:
         for j in unroll(range(COL)):
             c[j] += a[i * COL + j]
     for i in unroll(range(COL)):
-        c_signed: int32 = c[i]
+        c_signed: int64 = c[i]
         c[i] = c_signed // ROW
 
 
@@ -163,7 +171,7 @@ def mean_axis_1(a: List, c: List) -> None:
         for j in unroll(range(ROW)):
             c[j] += a[j * COL + i]
     for i in unroll(range(ROW)):
-        c_signed: int32 = c[i]
+        c_signed: int64 = c[i]
         c[i] = c_signed // COL
 
 
@@ -184,7 +192,7 @@ def linalg_eigh(
     V = [0] * (LEN)
 
     for i in unroll(range(ROW)):
-        V[i * ROW + i] = 16777216
+        V[i * ROW + i] = 281474976710656
     while max_iter > 0:
         Q = [0] * (LEN)
         R = [0] * (LEN)
@@ -223,11 +231,13 @@ def linalg_eigh(
 
 
 def linalg_qr(A: List, Q: List, R: List) -> None:
+    v: List = [0] * ROW
+    v_2: List = [0] * ROW
+    # v_3: List = [0] * ROW
+    r_signed: int64 = 0
+    q_signed: int64 = 0
+    v_signed: int64 = 0
     for j in range(COL):
-        v: List = [0] * ROW
-        r_signed: int32 = 0
-        q_signed: int32 = 0
-        v_signed: int32 = 0
         for i in unroll(range(ROW)):
             v[i] = A[i * COL + j]
         for i in range(j):
@@ -236,13 +246,14 @@ def linalg_qr(A: List, Q: List, R: List) -> None:
                 q_signed = Q[k * COL + i]
                 v_signed = v[k]
                 R[i * COL + j] += float.mult(q_signed, v_signed)
-        v2: List = [0] * ROW
         for i in range(j):
             for k in range(ROW):
                 q_signed = Q[k * COL + i]
                 r_signed = R[i * COL + j]
-                v2[k] = float.mult(q_signed, r_signed)
-            list_linalg.sub(v, v2, v)
+                v_2[k] = float.mult(q_signed, r_signed)
+            for k in unroll(range(ROW)):
+                v_signed = v_2[k]
+                v[k] -= v_signed
         norm_v = list_linalg.linalg_norm(v)
         if norm_v == 0:
             continue
@@ -254,28 +265,29 @@ def linalg_qr(A: List, Q: List, R: List) -> None:
                 Q[i * COL + j] = float.div(v_signed, r_signed)
 
 
-def linalg_norm(A: List) -> int32:
-    s: int32 = 0
-    A_signed: int32 = 0
+def linalg_norm(A: List) -> int64:
+    s: int64 = 0
+    A_signed: int64 = 0
     for i in range(LEN):
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
+    print("s: ", s)
     # Newton's method
-    x: int64 = s
+    x: int128 = s
     if x == 0:
         return 0
     count: int8 = 100
     while count > 0:
-        x2: int64 = x * x >> PRECISION
-        x3: int64 = (x2 - s) << PRECISION
-        x4: int64 = x << 1
-        x5: int64 = x3 // x4
-        if x5 < 10 and x5 > -10:
+        x_2: int128 = x * x >> PRECISION
+        x_3: int128 = (x_2 - s) << PRECISION
+        x_4: int128 = x << 1
+        x_5: int128 = x_3 // x_4
+        if x_5 < 10 and x_5 > -10:
             count = 0
         else:
             count -= 1
-            x -= x5
+            x -= x_5
     if x < 0:
         return -x
     else:

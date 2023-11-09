@@ -4,7 +4,7 @@ import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
-ROW = 5
+ROW = 4
 COL = 10
 LEN = ROW * COL
 PRECISION = 48

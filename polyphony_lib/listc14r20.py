@@ -223,11 +223,13 @@ def linalg_eigh(
 
 
 def linalg_qr(A: List, Q: List, R: List) -> None:
+    v: List = [0] * ROW
+    v2: List = [0] * ROW
+    v3: List = [0] * ROW
+    r_signed: int64 = 0
+    q_signed: int64 = 0
+    v_signed: int64 = 0
     for j in range(COL):
-        v: List = [0] * ROW
-        r_signed: int64 = 0
-        q_signed: int64 = 0
-        v_signed: int64 = 0
         for i in unroll(range(ROW)):
             v[i] = A[i * COL + j]
         for i in range(j):
@@ -236,13 +238,14 @@ def linalg_qr(A: List, Q: List, R: List) -> None:
                 q_signed = Q[k * COL + i]
                 v_signed = v[k]
                 R[i * COL + j] += float.mult(q_signed, v_signed)
-        v2: List = [0] * ROW
         for i in range(j):
             for k in range(ROW):
                 q_signed = Q[k * COL + i]
                 r_signed = R[i * COL + j]
                 v2[k] = float.mult(q_signed, r_signed)
-            list_linalg.sub(v, v2, v)
+            for k in unroll(range(ROW)):
+                v_signed = v2[k]
+                v[k] -= v_signed
         norm_v = list_linalg.linalg_norm(v)
         if norm_v == 0:
             continue

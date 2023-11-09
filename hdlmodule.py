@@ -22,11 +22,7 @@ class HDLVariable(HDLAction):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, HDLVariable):
             return NotImplemented
-        return (
-            self.name == other.name
-            and self.width == other.width
-            and self.type == other.type
-        )
+        return self.name == other.name and self.width == other.width and self.type == other.type
 
     def gen_decl(self) -> str:
         if self.signed:
@@ -143,15 +139,11 @@ class HDLModule:
             "idle": [HDLNonBlockingAssign(self.func_name + "_valid", "0")],
             "fin": [HDLNonBlockingAssign(self.func_name + "_valid", "1")],
         }
-        self.controlflow: dict[str, dict[str, str]] = {
-            "fin": {self.func_name + "_accept": "idle"}
-        }
+        self.controlflow: dict[str, dict[str, str]] = {"fin": {self.func_name + "_accept": "idle"}}
         self.assigns: list[HDLBlockingAssign] = []
         self.states: dict[str, int] = {"idle": 0, "fin": 1}
         self.state_count = 2
-        self.verilog_path = (
-            os.path.abspath("./numpy_to_polyphony/verilog/") + "/" + name + ".v"
-        )
+        self.verilog_path = os.path.abspath("./numpy_to_polyphony/verilog/") + "/" + name + ".v"
 
     def add_port(self, name: str, width: int, type: str, signed: bool = False) -> None:
         variable = HDLVariable(name, width, type, signed=signed)
@@ -280,7 +272,7 @@ def test() -> None:
     test_module.add_controlflow("idle", "add_ready == 1", "calc")
     test_module.add_controlflow("calc", "1", "fin")
 
-    print(test_module.build())
+    (test_module.build())
     test_module.generate()
 
 

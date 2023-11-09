@@ -1,11 +1,11 @@
-import listc10r1 as list_linalg
+import listc4r1 as list_linalg
 # This is calclations for list. Size is fixed.
 import float
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
-ROW = 5
-COL = 10
+ROW = 10
+COL = 4
 LEN = ROW * COL
 PRECISION = 48
 
