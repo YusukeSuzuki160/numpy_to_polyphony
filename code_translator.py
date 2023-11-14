@@ -8,16 +8,17 @@ from typing import Any
 # Third Party Library
 import astor
 from analyzer import process
+from config import Config
 from function_translator import FunctionTranslator
 from last_translator import LastTranslator
 from parse_complex import Complex, ComplexNumGenerator
 from pure_executer import PureExecuter
 from return_translator import ReturnTranslator
-from type_alias import VariableDict
+from type_alias import Number, VariableDict
 
 
 class CodeTranslator(ast.NodeTransformer):
-    def __init__(self, code: str, main_func: str) -> None:
+    def __init__(self, code: str, main_func: str, config: Config) -> None:
         logger = getLogger(__name__)
         logger.setLevel(logging.DEBUG)
         file_handler = logging.FileHandler(
@@ -26,6 +27,7 @@ class CodeTranslator(ast.NodeTransformer):
         file_handler.setLevel(logging.DEBUG)
         logger.addHandler(file_handler)
         self.logger = logger
+        self.config = config
         self.current_func = ""
         try:
             self.npalias = "np"
@@ -44,6 +46,7 @@ class CodeTranslator(ast.NodeTransformer):
                 self.complex_list,
                 self.np_list,
                 self.func_return,
+                self.number_list,
             ) = process(self.tree, main_func)
             logger.debug("return_var in process:\n%s", self.return_var)
             logger.debug("array_list in process:\n%s", self.array_list)
@@ -51,6 +54,10 @@ class CodeTranslator(ast.NodeTransformer):
             logger.debug("complex_list in process:\n%s", self.complex_list)
             logger.debug("np_list in process:\n%s", self.np_list)
             logger.debug("func_return in process:\n%s", self.func_return)
+            logger.debug("\n")
+            const_propagater = ConstPropagater(self.number_list)
+            self.tree = const_propagater.visit(self.tree)
+            logger.debug("tree in ConstPropagater:\n%s", astor.dump_tree(self.tree))
             logger.debug("\n")
             func_translator = FunctionTranslator(
                 self.array_list,
@@ -60,8 +67,12 @@ class CodeTranslator(ast.NodeTransformer):
                 self.npalias,
             )
             func_translator.visit(self.tree)
-            logger.debug("lib_list in FunctionTranslator:\n%s", func_translator.get_lib_list())
-            logger.debug("shapes in FunctionTranslator:\n%s", func_translator.get_shapes())
+            logger.debug(
+                "lib_list in FunctionTranslator:\n%s", func_translator.get_lib_list()
+            )
+            logger.debug(
+                "shapes in FunctionTranslator:\n%s", func_translator.get_shapes()
+            )
             logger.debug("tree in FunctionTranslator:\n%s", astor.dump_tree(self.tree))
             logger.debug("\n")
             self.lib_list = func_translator.get_lib_list()
@@ -83,8 +94,17 @@ class CodeTranslator(ast.NodeTransformer):
                 self.return_var,
             )
             self.return_translator.visit(self.tree)
-            self.logger.debug("tree in ReturnTranslator:\n%s", astor.dump_tree(self.tree))
+            self.logger.debug(
+                "tree in ReturnTranslator:\n%s", astor.dump_tree(self.tree)
+            )
             self.logger.debug("\n")
+            if self.config.is_config() and self.config.has_key("fixed_point_style"):
+                fixed_point_style = self.config.get_preprocess_config()[
+                    "fixed_point_style"
+                ]
+                precision = fixed_point_style["precision"]
+            else:
+                precision = 48
             self.last_translator = LastTranslator(
                 self.array_list,
                 self.float_list,
@@ -92,6 +112,7 @@ class CodeTranslator(ast.NodeTransformer):
                 self.np_list,
                 self.return_var,
                 self.func_return,
+                precision=precision,
             )
             self.last_translator.visit(self.tree)
             self.logger.debug("tree in LastTranslator:\n%s", astor.dump_tree(self.tree))
@@ -188,3 +209,20 @@ class CodeTranslator(ast.NodeTransformer):
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         self.current_func = node.name
         return self.generic_visit(node)
+
+
+class ConstPropagater(ast.NodeTransformer):
+    def __init__(self, number_list: dict[str, Number]):
+        self.number_list = number_list
+        self.current_func = ""
+
+    def visit_FunctionDef(self, node: FunctionDef) -> Any:
+        self.current_func = node.name
+        return self.generic_visit(node)
+
+    def visit_Name(self, node: ast.Name) -> Any:
+        arg_name = self.current_func + "." + node.id
+        if arg_name in self.number_list:
+            return ast.copy_location(ast.Constant(n=self.number_list[arg_name]), node)
+        else:
+            return node

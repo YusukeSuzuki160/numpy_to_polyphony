@@ -6,6 +6,7 @@ from logging import getLogger
 
 # Third Party Library
 from code_translator import CodeTranslator
+from config import Config
 from polyphony_executer import PolyphonyExecuter
 from polyphony_profiler import Profiler
 
@@ -24,6 +25,8 @@ def main() -> None:
     args = parser.parse_args()
     main_func = args.main
     config = args.config
+    if config is None:
+        config = ""
     is_profile = bool(args.profile)
     if main_func is None:
         main_func = "main"
@@ -33,7 +36,8 @@ def main() -> None:
         filename = args.file.split(".")[-2]
         filename = filename.split("/")[-1]
         code = open(file).read()
-        translator = CodeTranslator(code, main_func)
+        config = Config(config)
+        translator = CodeTranslator(code, main_func, config)
         translator.process()
         tree = translator.get_tree()
         lib_list = translator.get_lib_list()
@@ -54,6 +58,7 @@ def main() -> None:
             profiler = Profiler(source, output_file)
         else:
             profiler = None
+        config = config.gen_config_json()
         PolyphonyExecuter(filename, shapes, config, profiler).execute()
     except Exception as e:
         logger.exception(e)

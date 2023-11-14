@@ -2,6 +2,7 @@ import ast
 import cProfile
 import os
 import pstats
+import re
 import sys
 from _ast import BinOp, Call, Expr
 from typing import Any
@@ -122,13 +123,9 @@ class Profiler:
         stats.sort_stats("calls")
         stats.strip_dirs()
 
-        profile_file = (
-            PROFILE_DIR + self.filename.split("/")[-1].split(".")[0] + ".prof"
-        )
+        profile_file = PROFILE_DIR + self.filename.split("/")[-1].split(".")[0] + ".prof"
         profiler.dump_stats(profile_file)
-        profile_txt = (
-            PROFILE_DIR + self.filename.split("/")[-1].split(".")[0] + ".prof.txt"
-        )
+        profile_txt = PROFILE_DIR + self.filename.split("/")[-1].split(".")[0] + ".prof.txt"
         with open(profile_txt, mode="w") as f:
             for func, (cc, nc, tt, ct, callers) in stats.stats.items():
                 file, line, func = func
@@ -158,4 +155,10 @@ class Profiler:
                     continue
                 func_name = f"{file}:{func}"
                 self.result[func_name] = cc
+                list_func_match = r"listc(\d+)r(\d+)\.([a-zA-Z0-9]+)"
+                list_func_match_result = re.match(list_func_match, func)
+                if list_func_match_result:
+                    col = list_func_match_result.group(1)
+                    row = list_func_match_result.group(2)
+                    func_name = f"list {row} * {col} {list_func_match_result.group(3)}"
                 f.write("{}: {}\n".format(func_name, cc))

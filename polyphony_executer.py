@@ -19,7 +19,7 @@ class PolyphonyExecuter:
         self,
         target: str,
         shapes: list[tuple[int, int]],
-        config: bool = False,
+        config: str = "",
         profiler: Profiler = None,
     ) -> None:
         self.logger = getLogger(__name__)
@@ -42,8 +42,9 @@ class PolyphonyExecuter:
             + " -D "
             + self.target_polyphony
         )
-        if config:
+        if config != "":
             self.command += " -c " + config
+            self.config = config
         self.test_command = "python3 " + self.target
         self.verilog_command = (
             "iverilog -o " + self.output + " " + "test.v " + self.verilog_file
@@ -71,6 +72,8 @@ class PolyphonyExecuter:
         os.chdir(ROOT)
         os.system(self.output)
         self.logger.debug("command: " + self.output)
+        if self.config:
+            os.remove(self.config)
 
     def rewrite_top(self) -> None:
         verilog_file = VERILOG_DIR + self.verilog_file

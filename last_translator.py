@@ -60,8 +60,9 @@ class LastTranslator(ast.NodeTransformer):
         np_list: VariableDict,
         return_var: VariableDict,
         return_type: VariableDict,
+        precision: int = 48,
     ) -> None:
-        self.precision = 48
+        self.precision = precision
         self.array_list = arrat_list
         self.float_list = float_list
         self.complex_list = complex_list
