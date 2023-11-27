@@ -7,6 +7,8 @@ from polyphony.typing import List, int8, int32, int64, int128
 ROW = 10
 COL = 2
 LEN = ROW * COL
+ROW_2 = ROW * ROW
+COL_2 = COL * COL
 PRECISION = 48
 
 
@@ -20,10 +22,18 @@ def add(a: List, b: List, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b[i]
 
+def add_eq(a: List, b: List) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] + b[i]
+
 
 def add_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b
+
+def add_scalar_eq(a: List, b: int64) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] + b
 
 
 def add_vertical(a: List, b: List, c: List) -> None:
@@ -31,21 +41,39 @@ def add_vertical(a: List, b: List, c: List) -> None:
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] + b[j]
 
+def add_vertical_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] + b[j]
+
 
 def add_horizontal(a: List, b: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] + b[i]
 
+def add_horizontal_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] + b[i]
+
 
 def sub(a: List, b: List, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b[i]
 
+def sub_eq(a: List, b: List) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] - b[i]
+
 
 def sub_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b
+
+def sub_scalar_eq(a: List, b: int64) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] - b
 
 
 def sub_horizontal(a: List, b: List, c: List) -> None:
@@ -53,11 +81,21 @@ def sub_horizontal(a: List, b: List, c: List) -> None:
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] - b[j]
 
+def sub_horizontal_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] - b[j]
+
 
 def sub_vertical(a: List, b: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] - b[i]
+
+def sub_vertical_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] - b[i]
 
 
 def matmult(a: List, b: List, col: int8, c: List) -> None:
@@ -90,7 +128,7 @@ def sqrt(a: List, c: List) -> None:
 def append(a: List, item: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i]
-    c[len(a)] = item
+    c[LEN] = item
 
 
 def argsort(a: List, c: List) -> None:
@@ -122,7 +160,7 @@ def slice_by_tuple(a: List, b: List, c: List, col: int8, d: List) -> None:
 
 def cov(A: List, rowvar: bool, c: List) -> None:
     a = [0] * LEN
-    if rowvar == False:
+    if not rowvar:
         for i in range(ROW):
             for j in unroll(range(COL)):
                 a[i * COL + j] = A[j * ROW + i]
@@ -130,14 +168,27 @@ def cov(A: List, rowvar: bool, c: List) -> None:
         for i in unroll(range(LEN)):
             a[i] = A[i]
     a_mean = [0] * ROW
-    mean_axis_1(a, a_mean)
-    for i in range(ROW):
-        for j in unroll(range(COL)):
-            a[i * COL + j] -= a_mean[i]
+    # for i in range(COL):
+    #     for j in unroll(range(ROW)):
+    #         a_mean[j] += a[j * COL + i]
+    # for i in unroll(range(ROW)):
+    #     a_mean_signed: int64 = a_mean[i]
+    #     a_mean[i] = a_mean_signed // COL
+    mean_axis_row(a, a_mean)
+    # for i in range(ROW):
+    #     for j in unroll(range(COL)):
+    #         a[i * COL + j] -= a_mean[i]
+    sub_vertical_eq(a, a_mean)
+    # for i in range(ROW):
+    #     for j in range(COL):
+    #         for k in unroll(range(ROW)):
+    #             a_signed: int64 = a[k * COL + j]
+    #             b_signed: int64 = a[i * COL + j]
+    #             c[k * ROW + i] += float.mult(a_signed, b_signed)
     a_T = [0] * LEN
     transpose(a, a_T)
     matmult_float(a, a_T, ROW, c)
-    for i in unroll(range(ROW * ROW)):
+    for i in range(ROW_2):
         c_signed: int64 = c[i]
         c[i] = c_signed // (COL - 1)
 
@@ -149,7 +200,7 @@ def mean(a: List) -> int64:
     return s // LEN
 
 
-def mean_axis_0(a: List, c: List) -> None:
+def mean_axis_col(a: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[j] += a[i * COL + j]
@@ -158,7 +209,7 @@ def mean_axis_0(a: List, c: List) -> None:
         c[i] = c_signed // ROW
 
 
-def mean_axis_1(a: List, c: List) -> None:
+def mean_axis_row(a: List, c: List) -> None:
     for i in range(COL):
         for j in unroll(range(ROW)):
             c[j] += a[j * COL + i]
@@ -172,18 +223,18 @@ def linalg_eigh(
 ) -> None:  # can use only symmetric matrix
     max_iter = 100
 
-    def is_diagonal(m: List) -> bool:
-        # 行列が対角であるかのチェック
-        for i in range(ROW):
-            for j in range(COL):
-                m_signed = m[i * COL + j]
-                if i != j and (m_signed > 100 or m_signed < -100):
-                    return False
-        return True
+    # def is_diagonal(m: List) -> bool:
+    #     # 行列が対角であるかのチェック
+    #     for i in range(ROW):
+    #         for j in range(COL):
+    #             m_signed = m[i * COL + j]
+    #             if i != j and (m_signed > 100 or m_signed < -100):
+    #                 return False
+    #     return True
 
     V = [0] * (LEN)
 
-    for i in unroll(range(ROW)):
+    for i in range(ROW):
         V[i * ROW + i] = 281474976710656
     while max_iter > 0:
         Q = [0] * (LEN)
@@ -191,21 +242,21 @@ def linalg_eigh(
         linalg_qr(A, Q, R)
         A_new = [0] * (LEN)
         matmult_float(R, Q, ROW, A_new)
-        for i in unroll(range(LEN)):
+        for i in range(LEN):
             A[i] = A_new[i]
         V_tmp = [0] * (LEN)
         matmult_float(V, Q, ROW, V_tmp)
-        for i in unroll(range(LEN)):
+        for i in range(LEN):
             V[i] = V_tmp[i]
-        if is_diagonal(A):
-            max_iter = 0
-        else:
-            max_iter -= 1
-    for i in unroll(range(ROW)):
+        # if is_diagonal(A):
+        #     max_iter = 0
+        # else:
+        #     max_iter -= 1
+        max_iter -= 1
+    for i in range(ROW):
         eigenvalues[i] = A[i * COL + i]
-    for i in unroll(range(LEN)):
+    for i in range(LEN):
         eigenvectors[i] = V[i]
-
     # 固有値を昇順にソート
     idx = [0] * ROW
     list_linalg.argsort(eigenvalues, idx)
@@ -223,11 +274,13 @@ def linalg_eigh(
 
 
 def linalg_qr(A: List, Q: List, R: List) -> None:
+    v: List = [0] * ROW
+    v_2: List = [0] * ROW
+    # v_3: List = [0] * ROW
+    r_signed: int64 = 0
+    q_signed: int64 = 0
+    v_signed: int64 = 0
     for j in range(COL):
-        v: List = [0] * ROW
-        r_signed: int64 = 0
-        q_signed: int64 = 0
-        v_signed: int64 = 0
         for i in unroll(range(ROW)):
             v[i] = A[i * COL + j]
         for i in range(j):
@@ -236,13 +289,14 @@ def linalg_qr(A: List, Q: List, R: List) -> None:
                 q_signed = Q[k * COL + i]
                 v_signed = v[k]
                 R[i * COL + j] += float.mult(q_signed, v_signed)
-        v2: List = [0] * ROW
         for i in range(j):
             for k in range(ROW):
                 q_signed = Q[k * COL + i]
                 r_signed = R[i * COL + j]
-                v2[k] = float.mult(q_signed, r_signed)
-            list_linalg.sub(v, v2, v)
+                v_2[k] = float.mult(q_signed, r_signed)
+            for k in unroll(range(ROW)):
+                v_signed = v_2[k]
+                v[k] -= v_signed
         norm_v = list_linalg.linalg_norm(v)
         if norm_v == 0:
             continue
@@ -261,21 +315,22 @@ def linalg_norm(A: List) -> int64:
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
+    print("s: ", s)
     # Newton's method
     x: int128 = s
     if x == 0:
         return 0
     count: int8 = 100
     while count > 0:
-        x2: int128 = x * x >> PRECISION
-        x3: int128 = (x2 - s) << PRECISION
-        x4: int128 = x << 1
-        x5: int128 = x3 // x4
-        if x5 < 100 and x5 > -100:
+        x_2: int128 = x * x >> PRECISION
+        x_3: int128 = (x_2 - s) << PRECISION
+        x_4: int128 = x << 1
+        x_5: int128 = x_3 // x_4
+        if x_5 < 10 and x_5 > -10:
             count = 0
         else:
             count -= 1
-            x -= x5
+            x -= x_5
     if x < 0:
         return -x
     else:

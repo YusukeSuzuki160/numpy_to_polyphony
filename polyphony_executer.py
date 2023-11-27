@@ -60,6 +60,7 @@ class PolyphonyExecuter:
         if self.profiler is not None:
             self.profiler.process()
             self.logger.debug("profiler.process() called")
+            PythonGenerator(self.shapes).generate()
         os.system(self.command)
         self.logger.debug("command: " + self.command)
         VerilogGenerator(self.shapes).generate()

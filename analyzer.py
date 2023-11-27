@@ -12,6 +12,8 @@ from _ast import (
     Call,
     Constant,
     FunctionDef,
+    Import,
+    ImportFrom,
     List,
     MatMult,
     Mult,
@@ -34,6 +36,9 @@ from type_alias import Number, VariableDict
 def process(
     tree: AST, main_func: str
 ) -> Tuple[
+    list[str],
+    list[str],
+    list[str],
     VariableDict,
     VariableDict,
     VariableDict,
@@ -44,15 +49,24 @@ def process(
 ]:
     logger = getLogger(__name__)
     logger.setLevel(logging.DEBUG)
-    file_handler = logging.FileHandler(
-        "./numpy_to_polyphony/.log/analyzer.log", mode="w"
-    )
+    file_handler = logging.FileHandler("./numpy_to_polyphony/.log/analyzer.log", mode="w")
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
     try:
         logger.debug("tree in ast.parse:\n%s", astor.dump_tree(tree))
         logger.debug("\n")
         logger.debug("main_func: %s", main_func)
+        program_info_alalyzer = ProgramInfoAnalyzer()
+        program_info_alalyzer.visit(tree)
+        logger.debug(
+            "call_func_list in CallFuncAnalyzer:\n%s", program_info_alalyzer.call_func_list
+        )
+        logger.debug("import_libs in CallFuncAnalyzer:\n%s", program_info_alalyzer.import_libs)
+        logger.debug("function_defs in CallFuncAnalyzer:\n%s", program_info_alalyzer.function_defs)
+        logger.debug("\n")
+        call_func_list = program_info_alalyzer.get_call_func_list()
+        import_list = program_info_alalyzer.import_libs
+        function_defs = program_info_alalyzer.function_defs
         immidiateassignanalyzer = ImmidiateAssignAnalyzer()
         immidiateassignanalyzer.visit(tree)
         logger.debug(
@@ -67,9 +81,7 @@ def process(
             "complex_list in ImmidiateAssignAnalyzer:\n%s",
             immidiateassignanalyzer.complex_list,
         )
-        logger.debug(
-            "np_list in ImmidiateAssignAnalyzer:\n%s", immidiateassignanalyzer.np_list
-        )
+        logger.debug("np_list in ImmidiateAssignAnalyzer:\n%s", immidiateassignanalyzer.np_list)
         logger.debug(
             "number_list in ImmidiateAssignAnalyzer:\n%s",
             immidiateassignanalyzer.number_list,
@@ -77,9 +89,7 @@ def process(
         logger.debug("\n")
         mainargnamelister = MainArgNameLister(main_func=main_func)
         mainargnamelister.visit(tree)
-        logger.debug(
-            "arg_name_list in MainArgNameLister:\n%s", mainargnamelister.arg_name_list
-        )
+        logger.debug("arg_name_list in MainArgNameLister:\n%s", mainargnamelister.arg_name_list)
         logger.debug("\n")
         arg_name_list = mainargnamelister.arg_name_list
         maincallanalyzer = MainCallAnalyzer(
@@ -103,9 +113,7 @@ def process(
         logger.debug("np_list in MainCallAnalyzer:\n%s", np_list)
         logger.debug("number_list in MainCallAnalyzer:\n%s", number_list)
         logger.debug("\n")
-        typeanalyzer = TypeAnalyzer(
-            array_list, float_list, complex_list, np_list, number_list
-        )
+        typeanalyzer = TypeAnalyzer(array_list, float_list, complex_list, np_list, number_list)
         typeanalyzer.visit(tree)
         logger.debug("np_list in TypeAnalyzer:\n%s", typeanalyzer.np_list)
         logger.debug("array_list in TypeAnalyzer:\n%s", typeanalyzer.array_list)
@@ -120,15 +128,11 @@ def process(
             typeanalyzer.np_list,
         )
         functionanalyzer.visit(tree)
-        logger.debug(
-            "func_return in FunctionAnalyzer:\n%s", functionanalyzer.func_return
-        )
+        logger.debug("func_return in FunctionAnalyzer:\n%s", functionanalyzer.func_return)
         logger.debug("np_list in FunctionAnalyzer:\n%s", functionanalyzer.np_list)
         logger.debug("array_list in FunctionAnalyzer:\n%s", functionanalyzer.array_list)
         logger.debug("float_list in FunctionAnalyzer:\n%s", functionanalyzer.float_list)
-        logger.debug(
-            "complex_list in FunctionAnalyzer:\n%s", functionanalyzer.complex_list
-        )
+        logger.debug("complex_list in FunctionAnalyzer:\n%s", functionanalyzer.complex_list)
         logger.debug("\n")
         functioncallanalyzer = FunctionCallAnalyzer(
             functionanalyzer.array_list,
@@ -138,22 +142,14 @@ def process(
             functionanalyzer.func_return,
         )
         functioncallanalyzer.visit(tree)
-        logger.debug(
-            "array_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.array_list
-        )
-        logger.debug(
-            "float_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.float_list
-        )
+        logger.debug("array_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.array_list)
+        logger.debug("float_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.float_list)
         logger.debug(
             "complex_list in FunctionCallAnalyzer:\n%s",
             functioncallanalyzer.complex_list,
         )
-        logger.debug(
-            "np_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.np_list
-        )
-        logger.debug(
-            "func_return in FunctionCallAnalyzer:\n%s", functioncallanalyzer.func_return
-        )
+        logger.debug("np_list in FunctionCallAnalyzer:\n%s", functioncallanalyzer.np_list)
+        logger.debug("func_return in FunctionCallAnalyzer:\n%s", functioncallanalyzer.func_return)
         logger.debug("\n")
         returnanalyzer = ReturnAnalyzer()
         returnanalyzer.visit(tree)
@@ -163,6 +159,9 @@ def process(
         logger.exception(e)
         raise e
     return (
+        import_list,
+        call_func_list,
+        function_defs,
         returnanalyzer.return_var,
         array_list,
         float_list,
@@ -175,14 +174,82 @@ def process(
 
 def get_shape_from_list(list_node: List | ast.expr) -> list[int]:
     if isinstance(list_node, List):
-        return list(
-            itertools.chain(
-                [len(list_node.elts)], get_shape_from_list(list_node.elts[0])
-            )
-        )
+        return list(itertools.chain([len(list_node.elts)], get_shape_from_list(list_node.elts[0])))
     else:
         return [1]
 
+
+class ProgramInfoAnalyzer(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.call_func_list: list[str] = []
+        self.import_libs: list[str] = []
+        self.function_defs: list[str] = []
+    
+    def get_call_func_list(self) -> list[str]:
+        return list(set(self.call_func_list))
+
+    def visit_Import(self, node: Import) -> Any:
+        for name in node.names:
+            match type(name):
+                case ast.alias:
+                    asname = name.asname
+                    mod_name = name.name
+                    if asname is None:
+                        self.import_libs.append(f"import {mod_name}")
+                    else:
+                        self.import_libs.append(f"import {mod_name} as {asname}")
+
+    def visit_ImportFrom(self, node: ImportFrom) -> Any:
+        module = node.module
+        for name in node.names:
+            match type(name):
+                case ast.alias:
+                    mod_name = name.name
+                    asname = name.asname
+                    if asname is None:
+                        self.import_libs.append(f"from {module} import {mod_name}")
+                    else:
+                        self.import_libs.append(f"from {module} import {mod_name} as {asname}")
+
+    def visit_FunctionDef(self, node: FunctionDef) -> Any:
+        self.function_defs.append(ast.unparse(node))
+        self.generic_visit(node)
+
+    def visit_Call(self, node: Call) -> Any:
+        match type(node.func):
+            case ast.Name:
+                self.call_func_list.append(node.func.id)
+            case ast.Attribute:
+                call_str = ""
+                call_node = node.func
+                while isinstance(call_node, Attribute):
+                    call_str = "." + call_node.attr + call_str
+                    call_node = call_node.value
+                if isinstance(call_node, Name):
+                    call_str = call_node.id + call_str
+                    self.call_func_list.append(call_str)
+
+    def visit_BinOp(self, node: BinOp) -> Any:
+        op = node.op
+        match type(op):
+            case ast.Add:
+                self.call_func_list.append("np_add")
+                self.call_func_list.append("add")
+            case ast.Sub:
+                self.call_func_list.append("np_sub")
+                self.call_func_list.append("sub")
+            case ast.Mult:
+                self.call_func_list.append("np_mult")
+                self.call_func_list.append("mult")
+            case ast.MatMult:
+                self.call_func_list.append("np_matmult")
+            case ast.Div:
+                self.call_func_list.append("div")
+            case ast.FloorDiv:
+                self.call_func_list.append("floor_div")
+            case ast.Mod:
+                self.call_func_list.append("mod")
+        self.generic_visit(node)
 
 class ImmidiateAssignAnalyzer(ast.NodeVisitor):
     def __init__(self) -> None:
@@ -272,14 +339,10 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
                         arg_name = func_name + "." + arg_name
                         assert arg_name in self.np_list or arg_name in self.array_list
                         if arg_name in self.np_list:
-                            self.np_list[id_name] = copy.deepcopy(
-                                self.np_list[arg_name]
-                            )
+                            self.np_list[id_name] = copy.deepcopy(self.np_list[arg_name])
                             self.np_list[id_name]["scope"] = func_name
                         elif arg_name in self.array_list:
-                            self.np_list[id_name] = copy.deepcopy(
-                                self.array_list[arg_name]
-                            )
+                            self.np_list[id_name] = copy.deepcopy(self.array_list[arg_name])
                             self.np_list[id_name]["scope"] = func_name
         elif isinstance(node.value, List):
             assert isinstance(node.targets[0], Name)
@@ -496,9 +559,7 @@ class MainCallAnalyzer(ast.NodeVisitor):
                         append_dict["scope"] = func_name
                         append_dict["dtype"] = "float64"
                         arg_name = (
-                            func_name
-                            + "."
-                            + self.main_args[self.main_func + "_arg" + str(i)]
+                            func_name + "." + self.main_args[self.main_func + "_arg" + str(i)]
                         )
                         self.float_list[arg_name] = append_dict
                     arg_name = self.main_func + "_arg" + str(i)
@@ -512,9 +573,7 @@ class MainCallAnalyzer(ast.NodeVisitor):
                         append_dict["scope"] = func_name
                         append_dict["dtype"] = "float64"
                         arg_name = (
-                            func_name
-                            + "."
-                            + self.main_args[self.main_func + "_arg" + str(i)]
+                            func_name + "." + self.main_args[self.main_func + "_arg" + str(i)]
                         )
                         self.float_list[arg_name] = append_dict
                     arg_name = self.main_func + "_arg" + str(i)
@@ -526,39 +585,25 @@ class MainCallAnalyzer(ast.NodeVisitor):
                     func_name = node.func.id
                     append_dict["scope"] = func_name
                     append_dict["dtype"] = "complex128"
-                    arg_name = (
-                        func_name
-                        + "."
-                        + self.main_args[self.main_func + "_arg" + str(i)]
-                    )
+                    arg_name = func_name + "." + self.main_args[self.main_func + "_arg" + str(i)]
                     self.complex_list[arg_name] = append_dict
                     i += 1
                 elif isinstance(arg, Name):
                     func_name = node.func.id
                     current_func = self.func_name
-                    arg_name = (
-                        func_name
-                        + "."
-                        + self.main_args[self.main_func + "_arg" + str(i)]
-                    )
+                    arg_name = func_name + "." + self.main_args[self.main_func + "_arg" + str(i)]
                     id_name = current_func + "." + arg.id
                     if id_name in self.array_list:
-                        self.array_list[arg_name] = copy.deepcopy(
-                            self.array_list[id_name]
-                        )
+                        self.array_list[arg_name] = copy.deepcopy(self.array_list[id_name])
                         self.array_list[arg_name]["scope"] = func_name
                     elif id_name in self.np_list:
                         self.np_list[arg_name] = copy.deepcopy(self.np_list[id_name])
                         self.np_list[arg_name]["scope"] = func_name
                     elif id_name in self.float_list:
-                        self.float_list[arg_name] = copy.deepcopy(
-                            self.float_list[id_name]
-                        )
+                        self.float_list[arg_name] = copy.deepcopy(self.float_list[id_name])
                         self.float_list[arg_name]["scope"] = func_name
                     elif id_name in self.complex_list:
-                        self.complex_list[arg_name] = copy.deepcopy(
-                            self.complex_list[id_name]
-                        )
+                        self.complex_list[arg_name] = copy.deepcopy(self.complex_list[id_name])
                         self.complex_list[arg_name]["scope"] = func_name
                     i += 1
                 elif isinstance(arg, UnaryOp):
@@ -570,9 +615,7 @@ class MainCallAnalyzer(ast.NodeVisitor):
                             append_dict["scope"] = func_name
                             append_dict["dtype"] = "float64"
                             arg_name = (
-                                func_name
-                                + "."
-                                + self.main_args[self.main_func + "_arg" + str(i)]
+                                func_name + "." + self.main_args[self.main_func + "_arg" + str(i)]
                             )
                             self.float_list[arg_name] = append_dict
                             i += 1
@@ -684,9 +727,7 @@ class TypeAnalyzer(ast.NodeVisitor):
             ):
                 if node.value.func.attr == "array":
                     if isinstance(node.value.args[0], List):
-                        assert isinstance(
-                            node.targets[0], Name
-                        )  # TODO: support subscript
+                        assert isinstance(node.targets[0], Name)  # TODO: support subscript
                         arg_name = node.targets[0].id
                         append_dict = {}
                         func_name = self.current_func
@@ -728,9 +769,7 @@ class TypeAnalyzer(ast.NodeVisitor):
                             for j in range(length):
                                 self.complex_list[arg_name + "_" + str(j)] = append_dict
                     if isinstance(node.value.args[0], Name):
-                        assert isinstance(
-                            node.targets[0], Name
-                        )  # TODO: support subscript
+                        assert isinstance(node.targets[0], Name)  # TODO: support subscript
                         arg_name = node.targets[0].id
                         func_name = self.current_func
                         arg_name = func_name + "." + arg_name
@@ -763,9 +802,7 @@ class TypeAnalyzer(ast.NodeVisitor):
                         id_name = func_name + "." + node.value.args[0].id
                         append_dict = copy.deepcopy(self.np_list[id_name])
                         append_dict["scope"] = func_name
-                        rowvar = [
-                            kw for kw in node.value.keywords if kw.arg == "rowvar"
-                        ]
+                        rowvar = [kw for kw in node.value.keywords if kw.arg == "rowvar"]
                         shape = append_dict["shape"]
                         if rowvar != []:
                             rowvar = rowvar[0].value.value
@@ -822,9 +859,7 @@ class TypeAnalyzer(ast.NodeVisitor):
                     if isinstance(node.value.func.value.value, ast.Name):
                         if node.value.func.value.value.id == "np":
                             if isinstance(node.value.args[0], ast.Name):
-                                assert isinstance(
-                                    node.targets[0], Name
-                                )  # TODO: support subscript
+                                assert isinstance(node.targets[0], Name)  # TODO: support subscript
                                 arg_name = node.targets[0].id
                                 func_name = self.current_func
                                 arg_name = func_name + "." + arg_name
@@ -834,9 +869,7 @@ class TypeAnalyzer(ast.NodeVisitor):
                                 shape = append_dict["shape"]
                                 length = shape[0] * shape[1]
                                 for j in range(length):
-                                    self.complex_list[
-                                        arg_name + "_" + str(j)
-                                    ] = append_dict
+                                    self.complex_list[arg_name + "_" + str(j)] = append_dict
                                 self.np_list[arg_name] = append_dict
             elif (
                 isinstance(node.value.func, Attribute)
@@ -1173,9 +1206,7 @@ class FunctionCallAnalyzer(ast.NodeVisitor):
                                         self.float_list[dist_name]["scope"] = func_name
                                     elif "complex" in src_type.get("dtype"):
                                         self.complex_list[dist_name] = src_type
-                                        self.complex_list[dist_name][
-                                            "scope"
-                                        ] = func_name
+                                        self.complex_list[dist_name]["scope"] = func_name
 
         self.generic_visit(node)
 

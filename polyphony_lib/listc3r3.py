@@ -7,6 +7,8 @@ from polyphony.typing import List, int8, int32, int64, int128
 ROW = 3
 COL = 3
 LEN = ROW * COL
+ROW_2 = ROW * ROW
+COL_2 = COL * COL
 PRECISION = 48
 
 
@@ -20,10 +22,18 @@ def add(a: List, b: List, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b[i]
 
+def add_eq(a: List, b: List) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] + b[i]
+
 
 def add_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] + b
+
+def add_scalar_eq(a: List, b: int64) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] + b
 
 
 def add_vertical(a: List, b: List, c: List) -> None:
@@ -31,21 +41,39 @@ def add_vertical(a: List, b: List, c: List) -> None:
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] + b[j]
 
+def add_vertical_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] + b[j]
+
 
 def add_horizontal(a: List, b: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] + b[i]
 
+def add_horizontal_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] + b[i]
+
 
 def sub(a: List, b: List, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b[i]
 
+def sub_eq(a: List, b: List) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] - b[i]
+
 
 def sub_scalar(a: List, b: int64, c: List) -> None:
     for i in unroll(range(LEN)):
         c[i] = a[i] - b
+
+def sub_scalar_eq(a: List, b: int64) -> None:
+    for i in unroll(range(LEN)):
+        a[i] = a[i] - b
 
 
 def sub_horizontal(a: List, b: List, c: List) -> None:
@@ -53,11 +81,21 @@ def sub_horizontal(a: List, b: List, c: List) -> None:
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] - b[j]
 
+def sub_horizontal_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] - b[j]
+
 
 def sub_vertical(a: List, b: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[i * COL + j] = a[i * COL + j] - b[i]
+
+def sub_vertical_eq(a: List, b: List) -> None:
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] = a[i * COL + j] - b[i]
 
 
 def matmult(a: List, b: List, col: int8, c: List) -> None:
@@ -130,22 +168,27 @@ def cov(A: List, rowvar: bool, c: List) -> None:
         for i in unroll(range(LEN)):
             a[i] = A[i]
     a_mean = [0] * ROW
-    for i in range(COL):
-        for j in unroll(range(ROW)):
-            a_mean[j] += a[j * COL + i]
-    for i in unroll(range(ROW)):
-        a_mean_signed: int64 = a_mean[i]
-        a_mean[i] = a_mean_signed // COL
-    for i in range(ROW):
-        for j in unroll(range(COL)):
-            a[i * COL + j] -= a_mean[i]
-    for i in range(ROW):
-        for j in range(COL):
-            for k in unroll(range(ROW)):
-                a_signed: int64 = a[k * COL + j]
-                b_signed: int64 = a[i * COL + j]
-                c[k * ROW + i] += float.mult(a_signed, b_signed)
-    for i in unroll(range(ROW * ROW)):
+    # for i in range(COL):
+    #     for j in unroll(range(ROW)):
+    #         a_mean[j] += a[j * COL + i]
+    # for i in unroll(range(ROW)):
+    #     a_mean_signed: int64 = a_mean[i]
+    #     a_mean[i] = a_mean_signed // COL
+    mean_axis_row(a, a_mean)
+    # for i in range(ROW):
+    #     for j in unroll(range(COL)):
+    #         a[i * COL + j] -= a_mean[i]
+    sub_vertical_eq(a, a_mean)
+    # for i in range(ROW):
+    #     for j in range(COL):
+    #         for k in unroll(range(ROW)):
+    #             a_signed: int64 = a[k * COL + j]
+    #             b_signed: int64 = a[i * COL + j]
+    #             c[k * ROW + i] += float.mult(a_signed, b_signed)
+    a_T = [0] * LEN
+    transpose(a, a_T)
+    matmult_float(a, a_T, ROW, c)
+    for i in range(ROW_2):
         c_signed: int64 = c[i]
         c[i] = c_signed // (COL - 1)
 
@@ -157,7 +200,7 @@ def mean(a: List) -> int64:
     return s // LEN
 
 
-def mean_axis_0(a: List, c: List) -> None:
+def mean_axis_col(a: List, c: List) -> None:
     for i in range(ROW):
         for j in unroll(range(COL)):
             c[j] += a[i * COL + j]
@@ -166,7 +209,7 @@ def mean_axis_0(a: List, c: List) -> None:
         c[i] = c_signed // ROW
 
 
-def mean_axis_1(a: List, c: List) -> None:
+def mean_axis_row(a: List, c: List) -> None:
     for i in range(COL):
         for j in unroll(range(ROW)):
             c[j] += a[j * COL + i]
@@ -196,10 +239,7 @@ def linalg_eigh(
     while max_iter > 0:
         Q = [0] * (LEN)
         R = [0] * (LEN)
-        A_in = [0] * (LEN)
-        for i in range(LEN):
-            A_in[i] = A[i]
-        linalg_qr(A_in, Q, R)
+        linalg_qr(A, Q, R)
         A_new = [0] * (LEN)
         matmult_float(R, Q, ROW, A_new)
         for i in range(LEN):
@@ -219,22 +259,16 @@ def linalg_eigh(
         eigenvectors[i] = V[i]
     # 固有値を昇順にソート
     idx = [0] * ROW
-    eigenvalues_in = [0] * ROW
-    for i in unroll(range(ROW)):
-        eigenvalues_in[i] = eigenvalues[i]
-    list_linalg.argsort(eigenvalues_in, idx)
+    list_linalg.argsort(eigenvalues, idx)
     eigenvalues_tmp = [0] * ROW
-    list_linalg.slice_by_array(eigenvalues_in, idx, eigenvalues_tmp)
+    list_linalg.slice_by_array(eigenvalues, idx, eigenvalues_tmp)
     for i in unroll(range(ROW)):
         eigenvalues[i] = eigenvalues_tmp[i]
     indexes = [0] * ROW
     for i in unroll(range(ROW)):
         indexes[i] = i
     eigenvectors_tmp = [0] * LEN
-    eigenvectors_in = [0] * LEN
-    for i in unroll(range(LEN)):
-        eigenvectors_in[i] = eigenvectors[i]
-    slice_by_tuple(eigenvectors_in, indexes, idx, COL, eigenvectors_tmp)
+    slice_by_tuple(eigenvectors, indexes, idx, COL, eigenvectors_tmp)
     for i in unroll(range(LEN)):
         eigenvectors[i] = eigenvectors_tmp[i]
 

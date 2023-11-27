@@ -121,6 +121,10 @@ class FunctionTranslator(ast.NodeTransformer):
                         )
                     else:
                         axis = axis[0].value.n
+                        if axis == 0:
+                            axis = "col"
+                        elif axis == 1:
+                            axis = "row"
                         return ast.copy_location(
                             Call(
                                 func=Attribute(

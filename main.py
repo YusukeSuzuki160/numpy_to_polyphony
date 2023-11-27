@@ -42,10 +42,11 @@ def main() -> None:
         tree = translator.get_tree()
         lib_list = translator.get_lib_list()
         shapes = translator.get_shapes()
+        call_func_list = translator.get_call_func_list()
+        import_list = translator.get_import_list()
+        function_defs = translator.get_function_defs()
         source = ast.unparse(tree)
-        import_stm = (
-            "from polyphony import testbench\nfrom polyphony.typing import int64\n"
-        )
+        import_stm = "from polyphony import testbench\nfrom polyphony.typing import int64\n"
         for lib in lib_list:
             import_stm += "import " + lib + "\n"
         source = import_stm + source
@@ -55,7 +56,11 @@ def main() -> None:
         with open(output_file, "w") as f:
             f.write(source)
         if is_profile:
-            profiler = Profiler(source, output_file)
+            profiler = Profiler(
+                source,
+                output_file,
+                lib_list,
+            )
         else:
             profiler = None
         config = config.gen_config_json()

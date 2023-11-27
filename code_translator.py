@@ -40,6 +40,9 @@ class CodeTranslator(ast.NodeTransformer):
             self.complex_parser = ComplexNumGenerator()
             self.complex_parser.visit(self.tree)
             (
+                self.import_list,
+                self.call_func_list,
+                self.function_defs,
                 self.return_var,
                 self.array_list,
                 self.float_list,
@@ -67,12 +70,8 @@ class CodeTranslator(ast.NodeTransformer):
                 self.npalias,
             )
             func_translator.visit(self.tree)
-            logger.debug(
-                "lib_list in FunctionTranslator:\n%s", func_translator.get_lib_list()
-            )
-            logger.debug(
-                "shapes in FunctionTranslator:\n%s", func_translator.get_shapes()
-            )
+            logger.debug("lib_list in FunctionTranslator:\n%s", func_translator.get_lib_list())
+            logger.debug("shapes in FunctionTranslator:\n%s", func_translator.get_shapes())
             logger.debug("tree in FunctionTranslator:\n%s", astor.dump_tree(self.tree))
             logger.debug("\n")
             self.lib_list = func_translator.get_lib_list()
@@ -94,14 +93,10 @@ class CodeTranslator(ast.NodeTransformer):
                 self.return_var,
             )
             self.return_translator.visit(self.tree)
-            self.logger.debug(
-                "tree in ReturnTranslator:\n%s", astor.dump_tree(self.tree)
-            )
+            self.logger.debug("tree in ReturnTranslator:\n%s", astor.dump_tree(self.tree))
             self.logger.debug("\n")
             if self.config.is_config() and self.config.has_key("fixed_point_style"):
-                fixed_point_style = self.config.get_preprocess_config()[
-                    "fixed_point_style"
-                ]
+                fixed_point_style = self.config.get_preprocess_config()["fixed_point_style"]
                 precision = fixed_point_style["precision"]
             else:
                 precision = 48
@@ -120,6 +115,15 @@ class CodeTranslator(ast.NodeTransformer):
         except Exception as e:
             self.logger.exception(e)
             raise e
+
+    def get_call_func_list(self) -> list[str]:
+        return self.call_func_list
+
+    def get_import_list(self) -> list[str]:
+        return self.import_list
+
+    def get_function_defs(self) -> list[str]:
+        return self.function_defs
 
     def get_np_list(self) -> VariableDict:
         return self.np_list
@@ -150,6 +154,9 @@ class CodeTranslator(ast.NodeTransformer):
 
     def get_shapes(self) -> list[tuple[int, ...]]:
         return self.shapes
+
+    def get_np_alias(self) -> str:
+        return self.npalias
 
     def flatten_list(self, list_name: str) -> list:
         list_type = self.array_list[list_name]
