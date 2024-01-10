@@ -17,14 +17,14 @@ def generate_fixed_lib(col: int, row: int, lib_dir: str = dir) -> None:
     filepath = os.path.join(lib_dir, filename)
     if row == 1:
         code = open(os.path.join(dir, lib_horizonal_file)).read()
-        code = re.sub(r"LEN = \d+", "LEN = " + str(col), code)
+        code = re.sub(r"LEN: int16 = \d+", "LEN: int16 = " + str(col), code)
     elif col == 1:
         code = open(os.path.join(dir, lib_vertical_file)).read()
-        code = re.sub(r"LEN = \d+", "LEN = " + str(row), code)
+        code = re.sub(r"LEN: int16 = \d+", "LEN: int16 = " + str(row), code)
     else:
         code = open(os.path.join(dir, lib_file)).read()
-        code = re.sub(r"COL = \d+", "COL = " + str(col), code)
-        code = re.sub(r"ROW = \d+", "ROW = " + str(row), code)
+        code = re.sub(r"COL: int8 = \d+", "COL: int8 = " + str(col), code)
+        code = re.sub(r"ROW: int8 = \d+", "ROW: int8 = " + str(row), code)
     if row != 1:
         import_linalg = "import list" + "c" + str(col) + "r" + "1" + " as list_linalg"
         code = import_linalg + "\n" + code

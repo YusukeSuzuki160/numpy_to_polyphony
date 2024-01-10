@@ -27,7 +27,9 @@ def main() -> None:
     config = args.config
     if config is None:
         config = ""
-    is_profile = bool(args.profile)
+    is_profile = False
+    if args.profile == "True":
+        is_profile = True
     if main_func is None:
         main_func = "main"
     logger.debug("main_func: %s", main_func)
@@ -41,10 +43,8 @@ def main() -> None:
         translator.process()
         tree = translator.get_tree()
         lib_list = translator.get_lib_list()
+        number_list = translator.get_number_list()
         shapes = translator.get_shapes()
-        call_func_list = translator.get_call_func_list()
-        import_list = translator.get_import_list()
-        function_defs = translator.get_function_defs()
         source = ast.unparse(tree)
         import_stm = "from polyphony import testbench\nfrom polyphony.typing import int64\n"
         for lib in lib_list:
@@ -57,14 +57,13 @@ def main() -> None:
             f.write(source)
         if is_profile:
             profiler = Profiler(
-                source,
-                output_file,
-                lib_list,
+                code,
+                filename,
             )
         else:
             profiler = None
         config = config.gen_config_json()
-        PolyphonyExecuter(filename, shapes, config, profiler).execute()
+        PolyphonyExecuter(filename, shapes, number_list, config, profiler).execute()
     except Exception as e:
         logger.exception(e)
         raise e

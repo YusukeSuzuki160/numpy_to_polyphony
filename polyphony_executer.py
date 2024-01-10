@@ -19,6 +19,7 @@ class PolyphonyExecuter:
         self,
         target: str,
         shapes: list[tuple[int, int]],
+        number_list: dict[str, int],
         config: str = "",
         profiler: Profiler = None,
     ) -> None:
@@ -39,7 +40,8 @@ class PolyphonyExecuter:
             + self.verilog_file
             + " -d"
             + VERILOG_DIR
-            + " -D "
+            + " "
+             + " -D "
             + self.target_polyphony
         )
         if config != "":
@@ -51,11 +53,12 @@ class PolyphonyExecuter:
         )
         self.shapes = shapes
         self.profiler = profiler
+        self.number_list = number_list
 
     def execute(self) -> None:
         os.system(self.test_command)
         self.logger.debug("command: " + self.test_command)
-        PythonGenerator(self.shapes).generate()
+        PythonGenerator(self.shapes, self.number_list).generate()
         self.logger.debug("PythonGenerator(self.shapes).generate() called")
         if self.profiler is not None:
             self.profiler.process()

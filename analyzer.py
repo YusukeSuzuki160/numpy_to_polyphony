@@ -6,6 +6,7 @@ import logging
 from _ast import (
     AST,
     Add,
+    AnnAssign,
     Assign,
     Attribute,
     BinOp,
@@ -259,13 +260,20 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
         self.np_list: VariableDict = {}
         self.number_list: dict[str, Number] = {}
         self.current_func = ""
+        self.globals = []
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         self.current_func = node.name
         self.generic_visit(node)
+        self.current_func = ""
 
     def visit_Assign(self, node: Assign) -> Any:
-        if isinstance(node.value, ast.Num):
+        if self.current_func == "":
+            self.globals.append(node.targets[0].id)
+        if isinstance(node.value, ast.Constant):
+            if not isinstance(node.targets[0], Name):
+                self.generic_visit(node)
+                return
             assert isinstance(node.targets[0], Name)  # TODO: support subscript
             arg_name = node.targets[0].id
             append_dict = {}
@@ -380,29 +388,29 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
                 right = node.value.right.value
                 op = node.value.op
                 match op:
-                    case ast.Add:
+                    case ast.Add():
                         value = left + right
-                    case ast.Sub:
+                    case ast.Sub():
                         value = left - right
-                    case ast.Mult:
+                    case ast.Mult():
                         value = left * right
-                    case ast.Div:
+                    case ast.Div():
                         value = left / right
-                    case ast.FloorDiv:
+                    case ast.FloorDiv():
                         value = left // right
-                    case ast.Mod:
+                    case ast.Mod():
                         value = left % right
-                    case ast.Pow:
+                    case ast.Pow():
                         value = left**right
-                    case ast.LShift:
+                    case ast.LShift():
                         value = left << right
-                    case ast.RShift:
+                    case ast.RShift():
                         value = left >> right
-                    case ast.BitOr:
+                    case ast.BitOr():
                         value = left | right
-                    case ast.BitXor:
+                    case ast.BitXor():
                         value = left ^ right
-                    case ast.BitAnd:
+                    case ast.BitAnd():
                         value = left & right
                     case _:
                         value = None
@@ -412,9 +420,7 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
                     func_name = self.current_func
                     arg_name = func_name + "." + arg_name
                     self.number_list[arg_name] = value
-            if isinstance(node.value.left, ast.Constant) or isinstance(
-                node.value.right, ast.Constant
-            ):
+            if isinstance(node.value.left, ast.Constant):
                 if isinstance(node.value.left.value, float):
                     assert isinstance(node.targets[0], Name)
                     arg_name = node.targets[0].id
@@ -433,6 +439,49 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
                     append_dict["scope"] = func_name
                     append_dict["dtype"] = "complex128"
                     self.complex_list[arg_name] = append_dict
+            if isinstance(node.value.left, ast.Name) and isinstance(node.value.right, ast.Name):
+                if node.value.left.id in self.globals:
+                    left_id = "." + node.value.left.id
+                else:
+                    left_id = self.current_func + "." + node.value.left.id
+                if node.value.right.id in self.globals:
+                    right_id = "." + node.value.right.id
+                else:
+                    right_id = self.current_func + "." + node.value.right.id
+                if left_id in self.number_list and right_id in self.number_list:
+                    match node.value.op:
+                        case ast.Add():
+                            value = self.number_list[left_id] + self.number_list[right_id]
+                        case ast.Sub():
+                            value = self.number_list[left_id] - self.number_list[right_id]
+                        case ast.Mult():
+                            value = self.number_list[left_id] * self.number_list[right_id]
+                        case ast.Div():
+                            value = self.number_list[left_id] / self.number_list[right_id]
+                        case ast.FloorDiv():
+                            value = self.number_list[left_id] // self.number_list[right_id]
+                        case ast.Mod():
+                            value = self.number_list[left_id] % self.number_list[right_id]
+                        case ast.Pow():
+                            value = self.number_list[left_id]**self.number_list[right_id]
+                        case ast.LShift():
+                            value = self.number_list[left_id] << self.number_list[right_id]
+                        case ast.RShift():
+                            value = self.number_list[left_id] >> self.number_list[right_id]
+                        case ast.BitOr():
+                            value = self.number_list[left_id] | self.number_list[right_id]
+                        case ast.BitXor():
+                            value = self.number_list[left_id] ^ self.number_list[right_id]
+                        case ast.BitAnd():
+                            value = self.number_list[left_id] & self.number_list[right_id]
+                        case _:
+                            value = None
+                    assert isinstance(node.targets[0], Name)
+                    if value is not None:
+                        arg_name = node.targets[0].id
+                        func_name = self.current_func
+                        arg_name = func_name + "." + arg_name
+                        self.number_list[arg_name] = value
         elif isinstance(node.value, UnaryOp):
             if isinstance(node.value.operand, ast.Constant):
                 if isinstance(node.value.operand.value, float):
@@ -463,6 +512,258 @@ class ImmidiateAssignAnalyzer(ast.NodeVisitor):
                     case _:
                         value = None
                 assert isinstance(node.targets[0], Name)
+                if value is not None:
+                    arg_name = node.targets[0].id
+                    func_name = self.current_func
+                    arg_name = func_name + "." + arg_name
+                    self.number_list[arg_name] = value
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: AnnAssign) -> Any:
+        if self.current_func == "":
+            self.globals.append(node.target.id)
+        if isinstance(node.value, ast.Constant):
+            if not isinstance(node.target, Name):
+                self.generic_visit(node)
+                return
+            assert isinstance(node.target, Name)  # TODO: support subscript
+            arg_name = node.target.id
+            append_dict = {}
+            func_name = self.current_func
+            arg_name = func_name + "." + arg_name
+            append_dict["scope"] = func_name
+            if isinstance(node.value.n, float):
+                type = "float64"
+                append_dict["dtype"] = type
+                self.float_list[arg_name] = append_dict
+            value = node.value.n
+            self.number_list[arg_name] = value
+
+        elif isinstance(node.value, Complex):
+            assert isinstance(node.target, Name)  # TODO: support subscript
+            arg_name = node.target.id
+            append_dict = {}
+            func_name = self.current_func
+            arg_name = func_name + "." + arg_name
+            append_dict["scope"] = func_name
+            append_dict["dtype"] = "complex128"
+            self.complex_list[arg_name] = append_dict
+            value = node.value.value
+            self.number_list[arg_name] = value
+
+        elif isinstance(node.value, Call):
+            if (
+                isinstance(node.value.func, Attribute)
+                and isinstance(node.value.func.value, Name)
+                and node.value.func.value.id == "np"
+            ):
+                if node.value.func.attr == "array":
+                    if isinstance(node.value.args[0], List):
+                        assert isinstance(node.target, Name)
+                        arg_name = node.target.id
+                        func_name = self.current_func
+                        arg_name = func_name + "." + arg_name
+                        append_dict = {}
+                        append_dict["scope"] = func_name
+                        append_dict["shape"] = get_shape_from_list(node.value.args[0])
+                        element = node.value.args[0].elts[0]
+                        shape = append_dict["shape"]
+                        assert isinstance(shape, list)
+                        while isinstance(element, List):
+                            element = element.elts[0]
+                        if isinstance(element, ast.UnaryOp):
+                            element = element.operand
+                        if isinstance(element, Complex):
+                            dtype = "complex128"
+                        else:
+                            assert isinstance(element, ast.Num)
+                            if isinstance(element.n, int):
+                                dtype = "int64"
+                            elif isinstance(element.n, float):
+                                dtype = "float64"
+                            elif isinstance(element.n, bool):
+                                dtype = "bool"
+                            else:
+                                dtype = "object"
+                        if node.value.keywords != []:
+                            if node.value.keywords[0].arg == "dtype":
+                                dtype = node.value.keywords[0].value.value.id
+                        append_dict["dtype"] = dtype
+                        self.np_list[arg_name] = append_dict
+                    elif isinstance(node.value.args[0], Name):
+                        assert isinstance(node.targets[0], Name)
+                        id_name = node.target.id
+                        func_name = self.current_func
+                        id_name = func_name + "." + id_name
+                        arg_name = node.value.args[0].id
+                        arg_name = func_name + "." + arg_name
+                        assert arg_name in self.np_list or arg_name in self.array_list
+                        if arg_name in self.np_list:
+                            self.np_list[id_name] = copy.deepcopy(self.np_list[arg_name])
+                            self.np_list[id_name]["scope"] = func_name
+                        elif arg_name in self.array_list:
+                            self.np_list[id_name] = copy.deepcopy(self.array_list[arg_name])
+                            self.np_list[id_name]["scope"] = func_name
+        elif isinstance(node.value, List):
+            assert isinstance(node.target, Name)
+            arg_name = node.target.id
+            func_name = self.current_func
+            arg_name = func_name + "." + arg_name
+            append_dict = {}
+            append_dict["scope"] = func_name
+            append_dict["shape"] = get_shape_from_list(node.value)
+            element = node.value.elts[0]
+            shape = append_dict["shape"]
+            assert isinstance(shape, list)
+            while isinstance(element, List):
+                element = element.elts[0]
+            if isinstance(element, Complex):
+                dtype = "complex128"
+            else:
+                assert isinstance(element, ast.Num)
+                if isinstance(element.n, int):
+                    dtype = "int64"
+                elif isinstance(element.n, float):
+                    dtype = "float64"
+                elif isinstance(element.n, bool):
+                    dtype = "bool"
+                else:
+                    dtype = "object"
+            append_dict["dtype"] = dtype
+            self.array_list[arg_name] = append_dict
+
+        elif isinstance(node.value, BinOp):
+            if isinstance(node.value.left, ast.Constant) and isinstance(
+                node.value.right, ast.Constant
+            ):
+                left = node.value.left.value
+                right = node.value.right.value
+                op = node.value.op
+                match op:
+                    case ast.Add():
+                        value = left + right
+                    case ast.Sub():
+                        value = left - right
+                    case ast.Mult():
+                        value = left * right
+                    case ast.Div():
+                        value = left / right
+                    case ast.FloorDiv():
+                        value = left // right
+                    case ast.Mod():
+                        value = left % right
+                    case ast.Pow():
+                        value = left**right
+                    case ast.LShift():
+                        value = left << right
+                    case ast.RShift():
+                        value = left >> right
+                    case ast.BitOr():
+                        value = left | right
+                    case ast.BitXor():
+                        value = left ^ right
+                    case ast.BitAnd():
+                        value = left & right
+                    case _:
+                        value = None
+                assert isinstance(node.target, Name)
+                if value is not None:
+                    arg_name = node.target.id
+                    func_name = self.current_func
+                    arg_name = func_name + "." + arg_name
+                    self.number_list[arg_name] = value
+            if isinstance(node.value.left, ast.Constant):
+                if isinstance(node.value.left.value, float):
+                    assert isinstance(node.target, Name)
+                    arg_name = node.target.id
+                    func_name = self.current_func
+                    arg_name = func_name + "." + arg_name
+                    append_dict = {}
+                    append_dict["scope"] = func_name
+                    append_dict["dtype"] = "float64"
+                    self.float_list[arg_name] = append_dict
+                elif isinstance(node.value.left.value, complex):
+                    assert isinstance(node.target, Name)
+                    arg_name = node.target.id
+                    func_name = self.current_func
+                    arg_name = func_name + "." + arg_name
+                    append_dict = {}
+                    append_dict["scope"] = func_name
+                    append_dict["dtype"] = "complex128"
+                    self.complex_list[arg_name] = append_dict
+            if isinstance(node.value.left, ast.Name) and isinstance(node.value.right, ast.Name):
+                if node.value.left.id in self.globals:
+                    left_id = "." + node.value.left.id
+                else:
+                    left_id = self.current_func + "." + node.value.left.id
+                if node.value.right.id in self.globals:
+                    right_id = "." + node.value.right.id
+                else:
+                    right_id = self.current_func + "." + node.value.right.id
+                if left_id in self.number_list and right_id in self.number_list:
+                    match node.value.op:
+                        case ast.Add():
+                            value = self.number_list[left_id] + self.number_list[right_id]
+                        case ast.Sub():
+                            value = self.number_list[left_id] - self.number_list[right_id]
+                        case ast.Mult():
+                            value = self.number_list[left_id] * self.number_list[right_id]
+                        case ast.Div():
+                            value = self.number_list[left_id] / self.number_list[right_id]
+                        case ast.FloorDiv():
+                            value = self.number_list[left_id] // self.number_list[right_id]
+                        case ast.Mod():
+                            value = self.number_list[left_id] % self.number_list[right_id]
+                        case ast.Pow():
+                            value = self.number_list[left_id]**self.number_list[right_id]
+                        case ast.LShift():
+                            value = self.number_list[left_id] << self.number_list[right_id]
+                        case ast.RShift():
+                            value = self.number_list[left_id] >> self.number_list[right_id]
+                        case ast.BitOr():
+                            value = self.number_list[left_id] | self.number_list[right_id]
+                        case ast.BitXor():
+                            value = self.number_list[left_id] ^ self.number_list[right_id]
+                        case ast.BitAnd():
+                            value = self.number_list[left_id] & self.number_list[right_id]
+                        case _:
+                            value = None
+                    assert isinstance(node.target, Name)
+                    if value is not None:
+                        arg_name = node.target.id
+                        func_name = self.current_func
+                        arg_name = func_name + "." + arg_name
+                        self.number_list[arg_name] = value
+        elif isinstance(node.value, UnaryOp):
+            if isinstance(node.value.operand, ast.Constant):
+                if isinstance(node.value.operand.value, float):
+                    assert isinstance(node.target, Name)
+                    arg_name = node.target.id
+                    func_name = self.current_func
+                    arg_name = func_name + "." + arg_name
+                    append_dict = {}
+                    append_dict["scope"] = func_name
+                    append_dict["dtype"] = "float64"
+                    self.float_list[arg_name] = append_dict
+                elif isinstance(node.value.operand.value, complex):
+                    assert isinstance(node.target, Name)
+                    arg_name = node.target.id
+                    func_name = self.current_func
+                    arg_name = func_name + "." + arg_name
+                    append_dict = {}
+                    append_dict["scope"] = func_name
+                    append_dict["dtype"] = "complex128"
+                    self.complex_list[arg_name] = append_dict
+                operand = node.value.operand.value
+                op = node.value.op
+                match op:
+                    case ast.USub:
+                        value = -operand
+                    case ast.UAdd:
+                        value = operand
+                    case _:
+                        value = None
+                assert isinstance(node.target, Name)
                 if value is not None:
                     arg_name = node.targets[0].id
                     func_name = self.current_func

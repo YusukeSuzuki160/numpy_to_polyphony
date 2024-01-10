@@ -1,8 +1,11 @@
+import ast
 import logging
 import os
 from logging import getLogger
 
+import astor
 import polyphony_lib.generate as plib
+from analyzer import ImmidiateAssignAnalyzer
 from hdlmodule import (
     HDLBlockingAssign,
     HDLIfElse,
@@ -11,6 +14,9 @@ from hdlmodule import (
     HDLNonBlockingAssign,
     HDLVariable,
 )
+from type_alias import Number
+
+from division_optimizer import DivisionOptimizer
 
 SRC_PATH = os.path.abspath("./numpy_to_polyphony/verilog/") + "/"
 DST_PATH = os.path.abspath("./verilog-code/") + "/"
@@ -106,7 +112,7 @@ class VerilogGenerator:
 
 
 class PythonGenerator:
-    def __init__(self, shapes: list[tuple[int, int]]) -> None:
+    def __init__(self, shapes: list[tuple[int, int]], number_list: dict[str, Number]) -> None:
         self.logger = getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         file_handler = logging.FileHandler(
@@ -117,9 +123,30 @@ class PythonGenerator:
         self.logger.debug("PythonGenerator initialized")
         self.logger.debug("\n")
         self.shapes = shapes
+        self.number_list = number_list
 
     def generate(self) -> None:
         plib.generate(self.shapes)
         os.system("cp -R " + LIB_PATH + "*" + " " + POLYPHONY_PATH)
         self.logger.debug("plib.generate called")
         self.logger.debug("\n")
+        for col, row in self.shapes:
+            filename = "list" + "c" + str(col) + "r" + str(row)
+            self.translate_lib(filename)
+        self.logger.debug("division_optimizer called called")
+
+    def translate_lib(self, lib_name: str) -> None:
+        code = open(POLYPHONY_PATH + lib_name + ".py").read()
+        tree = ast.parse(code)
+        self.logger.debug("tree in ast.parse:\n%s", astor.dump_tree(tree))
+        analyzer = ImmidiateAssignAnalyzer()
+        analyzer.visit(tree)
+        number_list = analyzer.number_list
+        globals = analyzer.globals
+        optimizer = DivisionOptimizer(number_list, globals=globals)
+        optimizer.visit(tree)
+        self.logger.debug("tree in DivisionOptimizer:\n%s", astor.dump_tree(tree))
+        source = ast.unparse(tree)
+        output_file = POLYPHONY_PATH + lib_name + ".py"
+        with open(output_file, "w") as f:
+            f.write(source)

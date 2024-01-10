@@ -16,6 +16,8 @@ from pure_executer import PureExecuter
 from return_translator import ReturnTranslator
 from type_alias import Number, VariableDict
 
+from division_optimizer import DivisionOptimizer
+
 
 class CodeTranslator(ast.NodeTransformer):
     def __init__(self, code: str, main_func: str, config: Config) -> None:
@@ -100,6 +102,9 @@ class CodeTranslator(ast.NodeTransformer):
                 precision = fixed_point_style["precision"]
             else:
                 precision = 48
+            self.division_optimizer = DivisionOptimizer(self.number_list)
+            self.division_optimizer.visit(self.tree)
+            self.logger.debug("tree in DivisionOptimizer:\n%s", astor.dump_tree(self.tree))
             self.last_translator = LastTranslator(
                 self.array_list,
                 self.float_list,
@@ -157,6 +162,9 @@ class CodeTranslator(ast.NodeTransformer):
 
     def get_np_alias(self) -> str:
         return self.npalias
+    
+    def get_number_list(self) -> dict[str, Number]:
+        return self.number_list
 
     def flatten_list(self, list_name: str) -> list:
         list_type = self.array_list[list_name]

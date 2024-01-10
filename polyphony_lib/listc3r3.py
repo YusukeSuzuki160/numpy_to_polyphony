@@ -1,6 +1,7 @@
 import listc3r1 as list_linalg
 # This is calclations for list. Size is fixed.
 import float
+import div
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int32, int64, int128
 
@@ -168,27 +169,22 @@ def cov(A: List, rowvar: bool, c: List) -> None:
         for i in unroll(range(LEN)):
             a[i] = A[i]
     a_mean = [0] * ROW
-    # for i in range(COL):
-    #     for j in unroll(range(ROW)):
-    #         a_mean[j] += a[j * COL + i]
-    # for i in unroll(range(ROW)):
-    #     a_mean_signed: int64 = a_mean[i]
-    #     a_mean[i] = a_mean_signed // COL
-    mean_axis_row(a, a_mean)
-    # for i in range(ROW):
-    #     for j in unroll(range(COL)):
-    #         a[i * COL + j] -= a_mean[i]
-    sub_vertical_eq(a, a_mean)
-    # for i in range(ROW):
-    #     for j in range(COL):
-    #         for k in unroll(range(ROW)):
-    #             a_signed: int64 = a[k * COL + j]
-    #             b_signed: int64 = a[i * COL + j]
-    #             c[k * ROW + i] += float.mult(a_signed, b_signed)
-    a_T = [0] * LEN
-    transpose(a, a_T)
-    matmult_float(a, a_T, ROW, c)
-    for i in range(ROW_2):
+    for i in range(COL):
+        for j in unroll(range(ROW)):
+            a_mean[j] += a[j * COL + i]
+    for i in unroll(range(ROW)):
+        a_mean_signed: int64 = a_mean[i]
+        a_mean[i] = a_mean_signed // COL
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] -= a_mean[i]
+    for i in range(ROW):
+        for j in range(COL):
+            for k in unroll(range(ROW)):
+                a_signed: int64 = a[k * COL + j]
+                b_signed: int64 = a[i * COL + j]
+                c[k * ROW + i] += float.mult(a_signed, b_signed)
+    for i in unroll(range(ROW_2)):
         c_signed: int64 = c[i]
         c[i] = c_signed // (COL - 1)
 
@@ -221,21 +217,14 @@ def mean_axis_row(a: List, c: List) -> None:
 def linalg_eigh(
     A: List, eigenvalues: List, eigenvectors: List
 ) -> None:  # can use only symmetric matrix
-    max_iter = 100
-
-    # def is_diagonal(m: List) -> bool:
-    #     # 行列が対角であるかのチェック
-    #     for i in range(ROW):
-    #         for j in range(COL):
-    #             m_signed = m[i * COL + j]
-    #             if i != j and (m_signed > 100 or m_signed < -100):
-    #                 return False
-    #     return True
+    max_iter = 15
 
     V = [0] * (LEN)
 
     for i in range(ROW):
         V[i * ROW + i] = 281474976710656
+        # V[i * ROW + i] = 16777216
+        # V[i * ROW + i] = 4294967296
     while max_iter > 0:
         Q = [0] * (LEN)
         R = [0] * (LEN)
@@ -248,10 +237,6 @@ def linalg_eigh(
         matmult_float(V, Q, ROW, V_tmp)
         for i in range(LEN):
             V[i] = V_tmp[i]
-        # if is_diagonal(A):
-        #     max_iter = 0
-        # else:
-        #     max_iter -= 1
         max_iter -= 1
     for i in range(ROW):
         eigenvalues[i] = A[i * COL + i]
@@ -315,22 +300,21 @@ def linalg_norm(A: List) -> int64:
         A_signed = A[i]
         A2 = float.mult(A_signed, A_signed)
         s += A2
-    print("s: ", s)
     # Newton's method
-    x: int128 = s
+    x: int64 = s
+    s_128 : int128 = s << PRECISION
     if x == 0:
         return 0
-    count: int8 = 100
+    count: int8 = 20
     while count > 0:
-        x_2: int128 = x * x >> PRECISION
-        x_3: int128 = (x_2 - s) << PRECISION
-        x_4: int128 = x << 1
-        x_5: int128 = x_3 // x_4
-        if x_5 < 10 and x_5 > -10:
+        x_2: int64 = x << 1
+        x_3: int128 = s_128 // x_2
+        x_4: int64 = (x >> 1) - x_3
+        if x_4 < 10 and x_4 > -10:
             count = 0
         else:
             count -= 1
-            x -= x_5
+            x -= x_4
     if x < 0:
         return -x
     else:

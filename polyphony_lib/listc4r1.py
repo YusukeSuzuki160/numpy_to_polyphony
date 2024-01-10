@@ -1,9 +1,10 @@
 # This is calclations for 1d list. Size is fixed.
 import float
+import div
 from polyphony import pipelined, testbench, unroll
-from polyphony.typing import List, int8, int32, int64, int128
+from polyphony.typing import List, int8, int16, int32, int64, int128
 
-LEN = 4
+LEN: int16 = 4
 PRECISION = 48
 
 
@@ -83,7 +84,8 @@ def mean(a: List) -> int64:
     s = 0
     for i in range(LEN):
         s += a[i]
-    return s // LEN
+    ans = s // LEN
+    return ans
 
 
 def linalg_norm(A: List) -> int64:
@@ -94,21 +96,50 @@ def linalg_norm(A: List) -> int64:
         A2 = float.mult(A_signed, A_signed)
         s += A2
     # Newton's method
-    x: int128 = s
-    if x == 0:
-        return 0
-    count: int8 = 100
+    # x: int64 = s
+    # s_128 : int128 = s << PRECISION
+    # ans = 0
+    # if x != 0:
+    #     count: int8 = 20
+    #     while count > 0:
+    #         x_2: int64 = s_128 // x
+    #         x_3: int64 = (x - x_2) >> 1
+    #         if x_3 < 10 and x_3 > -10:
+    #             count = 0
+    #         else:
+    #             count -= 1
+    #             x -= x_3
+    # if x < 0:
+    #     ans = -x
+    # else:
+    #     ans = x
+    ans = sqrt_scalar(s)
+    return ans
+
+def sqrt_scalar(s: int64) -> int64:
+    # Newton's method
+    x = 281474976710656
+    x_x = x * x >> PRECISION
+    cond = s * x_x >> PRECISION
+    while cond >= 844424930131968:
+        x = x >> 1
+        x_x = x * x >> PRECISION
+        cond = s * x_x >> PRECISION
+    count = 50
+    ans = 0
     while count > 0:
         x_2: int128 = x * x >> PRECISION
-        x_3: int128 = (x_2 - s) << PRECISION
-        x_4: int128 = x << 1
-        x_5: int128 = x_3 // x_4
-        if x_5 < 10 and x_5 > -10:
+        x_3: int128 = s * x_2 >> PRECISION
+        x_4: int128 = 844424930131968 - x_3
+        x_5: int128 = x_4 >> 1
+        x_6: int128 = x * x_5 >> PRECISION
+        if x - x_6 < 1000 and x - x_6 > -1000:
             count = 0
         else:
             count -= 1
-            x -= x_5
+            x = x_6
     if x < 0:
-        return -x
+        ans = -x * s >> PRECISION
     else:
-        return x
+        ans = x * s >> PRECISION
+    return ans

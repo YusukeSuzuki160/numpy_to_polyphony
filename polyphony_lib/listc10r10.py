@@ -168,26 +168,21 @@ def cov(A: List, rowvar: bool, c: List) -> None:
         for i in unroll(range(LEN)):
             a[i] = A[i]
     a_mean = [0] * ROW
-    # for i in range(COL):
-    #     for j in unroll(range(ROW)):
-    #         a_mean[j] += a[j * COL + i]
-    # for i in unroll(range(ROW)):
-    #     a_mean_signed: int64 = a_mean[i]
-    #     a_mean[i] = a_mean_signed // COL
-    mean_axis_row(a, a_mean)
-    # for i in range(ROW):
-    #     for j in unroll(range(COL)):
-    #         a[i * COL + j] -= a_mean[i]
-    sub_vertical_eq(a, a_mean)
-    # for i in range(ROW):
-    #     for j in range(COL):
-    #         for k in unroll(range(ROW)):
-    #             a_signed: int64 = a[k * COL + j]
-    #             b_signed: int64 = a[i * COL + j]
-    #             c[k * ROW + i] += float.mult(a_signed, b_signed)
-    a_T = [0] * LEN
-    transpose(a, a_T)
-    matmult_float(a, a_T, ROW, c)
+    for i in range(COL):
+        for j in unroll(range(ROW)):
+            a_mean[j] += a[j * COL + i]
+    for i in unroll(range(ROW)):
+        a_mean_signed: int64 = a_mean[i]
+        a_mean[i] = a_mean_signed // COL
+    for i in range(ROW):
+        for j in unroll(range(COL)):
+            a[i * COL + j] -= a_mean[i]
+    for i in range(ROW):
+        for j in range(COL):
+            for k in unroll(range(ROW)):
+                a_signed: int64 = a[k * COL + j]
+                b_signed: int64 = a[i * COL + j]
+                c[k * ROW + i] += float.mult(a_signed, b_signed)
     for i in range(ROW_2):
         c_signed: int64 = c[i]
         c[i] = c_signed // (COL - 1)
