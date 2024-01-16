@@ -4,6 +4,7 @@ import float
 import div
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int16, int32, int64, int128
+from polyphony.timing import clksleep, clkfence
 
 ROW: int8 = 5
 COL: int8 = 2
@@ -382,11 +383,11 @@ def sqrt_scalar(s: int64) -> int64:
         x_3: int128 = s * x_2 >> PRECISION
         x_4: int128 = (844424930131968 - x_3) >> 1
         x_5: int128 = x * x_4 >> PRECISION
-        if x - x_5 < 1000 and x - x_5 > -1000:
-            count = 0
-        else:
-            count -= 1
-            x = x_5
+        # if x - x_5 < 1000 and x - x_5 > -1000:
+        #     count = 0
+        # else:
+        count -= 1
+        x = x_5
     if x < 0:
         ans = -x * s >> PRECISION
     else:

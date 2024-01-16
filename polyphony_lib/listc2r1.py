@@ -3,6 +3,7 @@ import float
 import div
 from polyphony import pipelined, testbench, unroll
 from polyphony.typing import List, int8, int16, int32, int64, int128
+from polyphony.timing import clksleep, clkfence
 
 LEN: int16 = 2
 PRECISION = 48
